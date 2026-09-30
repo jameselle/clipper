@@ -1,0 +1,20 @@
+{
+  "name": "clipper",
+  "version": "1.0.0",
+  "description": "Turn a long video into short vertical clips automatically: transcribe, pick moments, cut pauses, reframe, pop captions, hook, cutaways, loudness, QA.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "clip": "tsx clip.ts",
+    "models": "sh scripts/models.sh",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
