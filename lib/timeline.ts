@@ -391,6 +391,95 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return header + events.join("\n") + "\n";
 }
 
+// ---------------------------------------------------------------- covers
+
+/** The part of a vertical video Instagram and TikTok show as its tile on the profile grid (3:4): [top, bottom]. */
+export function gridCrop(format: { w: number; h: number }): [number, number] {
+  const { w, h } = format;
+  if (h <= (w * 4) / 3) return [0, h];
+  const top = Math.round((h - (w * 4) / 3) / 2);
+  return [top, h - top];
+}
+
+/** Where a moment on a render came from: `t` seconds into the render (which plays at `speed`) → the source and
+ *  its time. Null past the end. */
+export function sourceAt(pieces: Piece[], speed: number, t: number): { source: string; time: number } | null {
+  const out = t * (speed || 1);
+  for (const p of pieces) {
+    if (out >= p.outStart && out < p.outStart + (p.end - p.start)) return { source: p.source, time: round(p.start + out - p.outStart) };
+  }
+  return null;
+}
+
+/** A cover title in at most two lines, split where the two halves come out most even. */
+export function coverLines(title: string): string[] {
+  const words = title.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.join(" ").length <= 9) return [words.join(" ")];
+  let best = [words.join(" ")];
+  let worst = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ");
+    const b = words.slice(i).join(" ");
+    const longest = Math.max(a.length, b.length);
+    if (longest < worst) {
+      worst = longest;
+      best = [a, b];
+    }
+  }
+  return best;
+}
+
+/** The cover's text as an ASS file over a still: the day in the highlight colour, the title under it in big
+ *  outlined words, all inside the profile grid's 3:4 crop. `above`: where the face starts (px); the words
+ *  shrink to end above it. Em and en dashes are refused, not swapped. */
+export function buildCoverAss(
+  format: { w: number; h: number },
+  style: Pick<CaptionStyle, "font" | "primary" | "outline" | "highlight">,
+  text: { day: string; title: string },
+  opts: { above?: number } = {},
+): string {
+  if (/[\u2013\u2014]/.test(text.day + text.title)) throw new Error("cover text: no em or en dashes");
+  const { w, h } = format;
+  const [top] = gridCrop(format);
+  const usable = w * 0.86;
+  const lines = coverLines(text.title);
+  // Arial Black capitals run about 0.78 em wide each: size the title so its longest line fits the width.
+  let daySize = Math.round(w * 0.135);
+  let titleSize = Math.min(Math.round(w * 0.15), Math.floor(usable / (Math.max(...lines.map((l) => l.length)) * 0.78)));
+  let y0 = top + Math.round(h * 0.045);
+  const blockEnd = () => y0 + Math.round(daySize * 1.15) + (lines.length - 1) * Math.round(titleSize * 1.05) + titleSize;
+  if (opts.above !== undefined && blockEnd() > opts.above) {
+    y0 = top + Math.round(h * 0.02);
+    const k = Math.max(0.5, (opts.above - y0) / (blockEnd() - y0));
+    daySize = Math.floor(daySize * k);
+    titleSize = Math.floor(titleSize * k);
+  }
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")");
+  const at = (y: number, size: number, colour: string, t: string) =>
+    `Dialogue: 0,0:00:00.00,0:00:10.00,Cover,,0,0,0,,{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}\\bord${Math.round(size / 9)}\\1c${assColour(colour)}}${esc(t)}`;
+  const events = [at(y0, daySize, style.highlight, text.day.trim().toUpperCase())];
+  let y = y0 + Math.round(daySize * 1.15);
+  for (const l of lines) {
+    events.push(at(y, titleSize, style.primary, l));
+    y += Math.round(titleSize * 1.05);
+  }
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${w}
+PlayResY: ${h}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cover,${style.font},${titleSize},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(titleSize / 9)},5,8,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join("\n")}
+`;
+}
+
 /** The ffmpeg video filter that fits a source into the format. */
 export function reframeFilter(
   src: { w: number; h: number },

@@ -7,7 +7,7 @@ import { test } from "node:test";
 
 import { mergeBrand, renderSpeed } from "../lib/brand";
 import { validateSpec, type EditSpec } from "../lib/spec";
-import { assColour, buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
+import { assColour, buildAss, buildCoverAss, captionLines, clearOfHook, coverLines, cutawayWindows, gridCrop, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Word } from "../lib/timeline";
 
 const spec = (over: Partial<EditSpec> = {}): EditSpec => ({
   title: "T",
@@ -114,6 +114,40 @@ test("brand: brand.json sets the speed videos post at; a spec's own speed wins",
   assert.equal(renderSpeed(spec(), mergeBrand({})), 1);
   assert.throws(() => mergeBrand({ speed: 4 }), /brand\.speed/);
   assert.throws(() => mergeBrand({ speed: "fast" as never }), /brand\.speed/);
+});
+
+test("cover: the day and title sit inside the 3:4 grid crop, fit the width, and wrap to two lines at most", () => {
+  assert.deepEqual(gridCrop({ w: 1080, h: 1920 }), [240, 1680]);
+  assert.deepEqual(coverLines("MY OWN MANYCHAT"), ["MY OWN", "MANYCHAT"]);
+  assert.deepEqual(coverLines("CLIPPER"), ["CLIPPER"]);
+  assert.equal(coverLines("A FREE CLIPPER AND AN IPHONE TELEPROMPTER").length, 2);
+  const brand = mergeBrand({});
+  const ass = buildCoverAss({ w: 1080, h: 1920 }, { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight }, { day: "Day 2", title: "My own ManyChat" });
+  const events = ass.split("\n").filter((l) => l.startsWith("Dialogue:"));
+  assert.equal(events.length, 3, "the day, then two title lines");
+  assert.match(events[0], /DAY 2/);
+  for (const e of events) {
+    const [, y] = /\\pos\((\d+),(\d+)\)/.exec(e)!.slice(1).map(Number);
+    const size = Number(/\\fs(\d+)/.exec(e)![1]);
+    assert.ok(y >= 240 && y + size <= 1680, `inside the grid crop: ${e}`);
+  }
+  assert.throws(() => buildCoverAss({ w: 1080, h: 1920 }, { font: "A", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A" }, { day: "Day 2", title: "Mine \u2014 free" }), /dash/);
+});
+
+test("cover: given where the face starts, the words shrink to stay above it", () => {
+  const style = { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A" };
+  const bottoms = (ass: string) => ass.split("\n").filter((l) => l.startsWith("Dialogue:")).map((e) => Number(/\\pos\(\d+,(\d+)\)/.exec(e)![1]) + Number(/\\fs(\d+)/.exec(e)![1]));
+  const free = Math.max(...bottoms(buildCoverAss({ w: 1080, h: 1920 }, style, { day: "Day 1", title: "$1M in 365 days" })));
+  const kept = Math.max(...bottoms(buildCoverAss({ w: 1080, h: 1920 }, style, { day: "Day 1", title: "$1M in 365 days" }, { above: 650 })));
+  assert.ok(free > 650, "without a limit the block runs lower");
+  assert.ok(kept <= 650, `the block ends above the face: ${kept}`);
+});
+
+test("cover: a moment on the render maps back to the source it came from, through the cuts and the speed", () => {
+  const pieces = [{ source: "a", start: 0.4, end: 10.4, outStart: 0 }, { source: "a", start: 50, end: 60, outStart: 10 }];
+  assert.deepEqual(sourceAt(pieces, 1.25, 4), { source: "a", time: 5.4 }, "4 s at 1.25x is 5 s into the edit");
+  assert.deepEqual(sourceAt(pieces, 1, 12.5), { source: "a", time: 52.5 }, "after the cut, in the second piece");
+  assert.equal(sourceAt(pieces, 1, 25), null, "past the end");
 });
 
 test("brand: defaults fill gaps, bad colours are refused", () => {

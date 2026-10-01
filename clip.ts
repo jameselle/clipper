@@ -9,6 +9,8 @@
 //   npm run clip -- notes <video|folder> [--all]              the review notes (open ones unless --all), with frame stills
 //   npm run clip -- notes-fixed <video> <note-id> "<what changed>"  mark a note fixed after re-rendering
 //   npm run clip -- apply-edits <video>                       apply the cuts and export speed marked on the review page
+//   npm run clip -- cover <video> --day "Day 2" --title "My own ManyChat" [--at <s>]   the post's cover: a clean
+//                          source frame (the planner's cover, --at, or a third of the way in) with the day and title
 //
 // Needs FFmpeg (with libass) and whisper.cpp's whisper-cli. Nothing is ever posted anywhere.
 
@@ -19,9 +21,9 @@ import path from "node:path";
 
 import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
-import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, serveReview, updateNote } from "./lib/review";
+import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
-import { buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Piece, type Word } from "./lib/timeline";
+import { buildAss, buildCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
 /** whisper.cpp's CLI: $CLIPPER_WHISPER, else whisper-cli on the PATH (brew install whisper-cpp), else a HyperFrames build. */
@@ -523,6 +525,48 @@ function renderInChild(specFile: string): Promise<string> {
 
 // ---------------------------------------------------------------- main
 
+/** The post's cover: the frame the owner picked in the planner (or `at`, or a third of the way in), taken from
+ *  the clean source through the render map so no caption or hook is burned in, with the day and title on top,
+ *  inside the profile grid's 3:4 crop. Writes <video>.cover.jpg (full size, to upload as the post's cover). */
+function cmdCover(video: string, text: { day: string; title: string }, at?: number): string {
+  const v = path.resolve(video);
+  const p = probe(v);
+  const root = path.resolve(process.env.CLIPPER_JOBS ?? path.join(process.cwd(), "jobs"));
+  const planned = readPlans(root).flatMap((pl) => pl.items).find((it) => path.resolve(root, it.v) === v)?.cover;
+  const t = at ?? planned ?? Math.min(p.duration / 3, 1);
+  const map = readMap(v);
+  let src = v;
+  let time = t;
+  let brand = DEFAULT_BRAND;
+  let faceY = 0.5;
+  if (map) {
+    const spec = JSON.parse(fs.readFileSync(map.spec, "utf8")) as EditSpec;
+    const hit = sourceAt(map.pieces, map.speed, t);
+    if (!hit) die(`cover: ${t}s is past the end of ${path.basename(v)}`);
+    src = spec.sources[hit.source];
+    time = hit.time;
+    brand = loadBrand(path.dirname(v));
+    if (typeof spec.faceY === "number") faceY = spec.faceY;
+  } else console.log("no render map beside the video: the cover frame comes from the render itself (captions included)");
+  const dims = { w: p.w, h: p.h };
+  const ass = v.replace(/\.mp4$/i, ".cover.ass");
+  // The face's centre is the spec's faceY (else the middle): keep the words above the top of the head.
+  const above = Math.round(dims.h * (faceY - 0.13));
+  fs.writeFileSync(ass, buildCoverAss(dims, { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight }, text, { above }));
+  const out = v.replace(/\.mp4$/i, ".cover.jpg");
+  const esc = (x: string) => x.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const fit = `scale=${dims.w}:${dims.h}:force_original_aspect_ratio=increase,crop=${dims.w}:${dims.h},setsar=1`;
+  // A soft dark fade from the top of the grid tile down, so the words stand off the face behind them.
+  const [top, bottom] = gridCropOf(dims);
+  const fadeH = top + Math.round((bottom - top) * 0.5); // from the frame's top edge: no seam on the full-size video
+  run("ffmpeg", ["-y", "-v", "error", "-ss", time.toFixed(3), "-i", src, "-frames:v", "1", "-filter_complex",
+    `[0:v]${fit}[base];color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='170*pow(1-Y/H,1.6)'[fade];` +
+    `[base][fade]overlay=0:0,subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`, "-q:v", "2", out]);
+  fs.rmSync(ass, { force: true });
+  console.log(`cover ${out}  (frame at ${t.toFixed(2)}s of the render${src !== v ? `, ${time.toFixed(2)}s of ${path.basename(src)}` : ""}${planned !== undefined && at === undefined ? ", the planner's pick" : ""})`);
+  return out;
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 const opt = (name: string) => {
   const i = args.indexOf(name);
@@ -574,6 +618,14 @@ switch (cmd) {
       (r) => console.log(`done: ${r.removed}s cut${r.speed ? `, now ${r.speed}x` : ""}${r.droppedCutaways.length ? `; dropped cutaways: ${r.droppedCutaways.join(", ")}` : ""}${r.qa ? `\n${r.qa}` : ""}`),
       (err) => die(err instanceof Error ? err.message : String(err)),
     );
+    break;
+  }
+  case "cover": {
+    const v = pos[0] ?? die('usage: cover <video> --day "Day 2" --title "My own ManyChat" [--at <seconds>]');
+    const day = opt("--day") ?? die("cover: --day is required");
+    const title = opt("--title") ?? die("cover: --title is required");
+    const at = opt("--at");
+    cmdCover(v, { day, title }, at === undefined ? undefined : Number(at));
     break;
   }
   case "notes-fixed": {

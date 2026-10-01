@@ -88,6 +88,14 @@ Drag across the **cuts lane** (the scissors row) to mark a part to delete, or ma
 
 Switch the review page to **Planner**. Add your edited videos, drag them into posting order (first at the top goes out first), and the phone preview shows the profile once they're all up: newest first, pinned posts on top, each cover cropped the way that platform crops it. Instagram and TikTok cut a 9:16 video to 3:4 in the grid, so a hook title near the top can lose its first line: click a video, scrub to a better cover frame, and **Use this frame as the cover**. Double-click any video (or its **Edit** chip) to open it in the editor. Plans are saved as `.review-planner.json` in the folder you're reviewing.
 
+### Make the cover
+
+```bash
+npm run clip -- cover jobs/<job>/<clip>-vertical.mp4 --day "Day 2" --title "My own ManyChat"
+```
+
+Writes `<clip>-vertical.cover.jpg`: the frame you picked as the cover in the planner (or `--at <seconds>`, or a third of the way in), taken from your original footage so no caption is burned in, with the day in your highlight colour and the title under it. The words stay inside the grid's 3:4 crop and above your face (from `faceY` in the spec), shrinking if they have to. Upload it as the post's cover. Titles with an em or en dash are refused.
+
 ## Use it by hand
 
 Every clip is described by a `spec.json`:
