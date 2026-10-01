@@ -137,8 +137,9 @@ The user watches renders on the review page (`npm run review`, http://127.0.0.1:
 say "fix my review notes on <video>":
 
 1. `npm run clip -- notes <video>` (or a job folder): each open note's id, time, text, the caption
-   on screen then, and the path of the frame still. **Read every frame** with the Read tool before changing
-   anything: the still is what they saw.
+   on screen then, and the paths of the frame stills. **Read every frame** with the Read tool before changing
+   anything: the stills are what they saw. A note can cover a span (`0:20.0–0:26.0`): it has stills from
+   its start, middle and end, and every caption shown across it.
 2. Map each note to the spec: the caption line at that time says which words are on screen; a cutaway
    covers `from`→`to` words; a cut sits between `segments`. Notes marked "earlier cut" were written on
    an older render, so find the moment by its caption text, not its time.

@@ -8,23 +8,30 @@
 // `serveReview` is the local page (127.0.0.1 only) that writes them. Only node's standard library is used,
 // so this file is shared as-is between HQ (lib/studio/review.ts) and the clipper (lib/review.ts).
 
+import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 
 import { REVIEW_PAGE } from "./review-page";
 
 export type ReviewNote = {
   id: string;
-  /** Seconds into the video. */
+  /** Seconds into the video: where the note starts. */
   t: number;
+  /** Where it ends, for a note about a span ("from here to here"). Absent for a single moment. */
+  end?: number;
   text: string;
   status: "open" | "fixed";
   createdAt: string;
-  /** The caption on screen at `t`, when the video has a caption file beside it. */
+  /** The caption on screen at `t` (for a span: every caption shown across it, joined with " / "). */
   caption?: string;
-  /** File name of the frame still, inside `<video>.review/`. */
+  /** File name of the frame still at `t`, inside `<video>.review/`. */
   frame?: string;
+  /** For a span: stills from its middle and its end, inside `<video>.review/`. */
+  frames?: string[];
   /** The video's modified time when the note was written: a later render makes it an "earlier cut" note. */
   render: string;
   fixedAt?: string;
@@ -104,20 +111,26 @@ function writeNotes(video: string, notes: ReviewNote[]) {
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-/** `frameJpeg`: the frame as base64 JPEG (a data: URL prefix is fine). */
-export function addNote(video: string, input: { t: number; text: string; frameJpeg?: string }): ReviewNote {
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** `end`: for a note about a span. `frameJpeg`: the frame at `t` as base64 JPEG (a data: URL prefix is fine). */
+export function addNote(video: string, input: { t: number; end?: number; text: string; frameJpeg?: string }): ReviewNote {
   const text = String(input.text ?? "").trim();
   if (!text) throw new Error("the note is empty");
   if (!(Number.isFinite(input.t) && input.t >= 0)) throw new Error("the time is missing");
   const note: ReviewNote = {
     id: newId(),
-    t: Math.round(input.t * 100) / 100,
+    t: r2(input.t),
     text,
     status: "open",
     createdAt: new Date().toISOString(),
     render: renderStamp(video),
   };
-  const caption = captionAt(video, note.t);
+  if (input.end !== undefined && input.end !== null) {
+    if (!(Number.isFinite(input.end) && r2(input.end) > note.t)) throw new Error("a span must end after it starts");
+    note.end = r2(input.end);
+  }
+  const caption = note.end === undefined ? captionAt(video, note.t) : captionsAcross(video, note.t, note.end);
   if (caption) note.caption = caption;
   if (input.frameJpeg) {
     const data = Buffer.from(input.frameJpeg.replace(/^data:image\/jpeg;base64,/, ""), "base64");
@@ -156,7 +169,7 @@ export function deleteNote(video: string, id: string) {
   const notes = readNotes(video);
   const note = notes.find((n) => n.id === id);
   if (!note) throw new Error("no such note");
-  if (note.frame) fs.rmSync(path.join(framesDir(video), path.basename(note.frame)), { force: true });
+  for (const f of [note.frame, ...(note.frames ?? [])]) if (f) fs.rmSync(path.join(framesDir(video), path.basename(f)), { force: true });
   const left = notes.filter((n) => n.id !== id);
   if (left.length) writeNotes(video, left);
   else fs.rmSync(notesFile(video), { force: true }); // the last note: leave no empty file behind
@@ -205,6 +218,48 @@ export function captionAt(video: string, t: number): string | undefined {
   return ass ? captionInAss(fs.readFileSync(ass, "utf8"), t) : undefined;
 }
 
+/** Every distinct caption shown between `a` and `b` seconds, in order, joined with " / ". */
+export function captionsAcross(video: string, a: number, b: number): string | undefined {
+  const file = captionFileFor(video);
+  if (!file) return undefined;
+  const ass = fs.readFileSync(file, "utf8");
+  const seen: string[] = [];
+  for (let t = a; t <= b + 1e-9; t += 0.1) {
+    const c = captionInAss(ass, Math.min(t, b));
+    if (c && seen.at(-1) !== c && !(seen.at(-1) ?? "").startsWith(c)) {
+      // A karaoke line grows word by word: keep the fullest version of each line.
+      if (seen.length && c.startsWith(seen.at(-1)!)) seen[seen.length - 1] = c;
+      else seen.push(c);
+    }
+  }
+  return seen.length ? seen.join(" / ") : undefined;
+}
+
+/** For a span note: stills from its middle and its end (FFmpeg), saved beside its first frame. */
+export async function addSpanFrames(video: string, id: string): Promise<ReviewNote | null> {
+  const ff = findTool("ffmpeg");
+  const note = readNotes(video).find((n) => n.id === id);
+  if (!ff || !note || note.end === undefined) return note ?? null;
+  fs.mkdirSync(framesDir(video), { recursive: true });
+  const frames: string[] = [];
+  for (const [label, at] of [["mid", (note.t + note.end) / 2], ["end", Math.max(note.t, note.end - 0.05)]] as const) {
+    const name = `${note.id}-${label}.jpg`;
+    try {
+      await runTool(ff, ["-y", "-v", "error", "-ss", at.toFixed(3), "-i", video, "-frames:v", "1", "-vf", "scale=-2:720", "-q:v", "4", path.join(framesDir(video), name)]);
+      frames.push(name);
+    } catch {
+      // keep whatever stills we got
+    }
+  }
+  if (!frames.length) return note;
+  const notes = readNotes(video);
+  const current = notes.find((n) => n.id === id);
+  if (!current) return null;
+  current.frames = frames;
+  writeNotes(video, notes);
+  return current;
+}
+
 export const clock = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 
 /** Plain-text summary of a video's notes, for the CLI (and for Claude to work from). */
@@ -214,12 +269,140 @@ export function formatNotes(video: string, notes: ReviewNote[], all = false): st
   const lines = [video];
   for (const n of shown) {
     const flags = [n.status === "fixed" ? "fixed" : "", isEarlierCut(video, n) ? "earlier cut" : ""].filter(Boolean).join(", ");
-    lines.push(`  [${n.id}] ${clock(n.t)}${flags ? ` (${flags})` : ""}  ${n.text}`);
-    if (n.caption) lines.push(`      caption: "${n.caption}"`);
+    const when = n.end === undefined ? clock(n.t) : `${clock(n.t)}–${clock(n.end)}`;
+    lines.push(`  [${n.id}] ${when}${flags ? ` (${flags})` : ""}  ${n.text}`);
+    if (n.caption) lines.push(`      ${n.end === undefined ? "caption" : "captions"}: "${n.caption}"`);
     if (n.frame) lines.push(`      frame:   ${path.join(framesDir(video), n.frame)}`);
+    for (const f of n.frames ?? []) lines.push(`      frame:   ${path.join(framesDir(video), f)}`);
     if (n.fix) lines.push(`      fix:     ${n.fix}`);
   }
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------- media for the page (FFmpeg)
+// Posters, the filmstrip and the waveform are made by FFmpeg on first request and cached in the temp
+// folder by file + modified time, so nothing is written beside the videos. Without FFmpeg the page still
+// works; the timeline just shows plain tracks.
+
+const HOME = os.homedir();
+const toolCache = new Map<string, string | null>();
+function findTool(name: "ffmpeg" | "ffprobe"): string | null {
+  if (toolCache.has(name)) return toolCache.get(name)!;
+  const env = process.env[name === "ffmpeg" ? "REVIEW_FFMPEG" : "REVIEW_FFPROBE"];
+  const dirs = [...String(process.env.PATH ?? "").split(path.delimiter), path.join(HOME, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
+  const found = env && fs.existsSync(env) ? env : dirs.map((d) => path.join(d, name)).find((f) => d(f)) ?? null;
+  function d(f: string) {
+    try {
+      return fs.statSync(f).isFile();
+    } catch {
+      return false;
+    }
+  }
+  toolCache.set(name, found);
+  return found;
+}
+
+let running = 0;
+const waiting: (() => void)[] = [];
+/** Runs a tool with at most 3 at once; resolves with stdout, rejects on a non-zero exit. */
+function runTool(bin: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const go = () => {
+      running++;
+      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (c) => (out += c));
+      child.stderr.on("data", (c) => (err = (err + c).slice(-2000)));
+      child.on("error", (e) => done(() => reject(e)));
+      child.on("close", (code) => done(() => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `${path.basename(bin)} exited ${code}`)))));
+    };
+    const done = (f: () => void) => {
+      running--;
+      waiting.shift()?.();
+      f();
+    };
+    if (running < 3) go();
+    else waiting.push(go);
+  });
+}
+
+const CACHE = path.join(os.tmpdir(), "review-cache");
+const inflight = new Map<string, Promise<string | null>>();
+/** The cached file for (video, kind), made once by `make(out)`. Null when it can't be made. */
+function cached(video: string, kind: string, ext: string, make: (out: string) => Promise<unknown>): Promise<string | null> {
+  const key = crypto.createHash("sha1").update(`${video}|${fs.statSync(video).mtimeMs}|${kind}`).digest("hex");
+  const out = path.join(CACHE, `${key}.${ext}`);
+  if (fs.existsSync(out)) return Promise.resolve(out);
+  const pending = inflight.get(out);
+  if (pending) return pending;
+  fs.mkdirSync(CACHE, { recursive: true });
+  const tmp = `${out}.part.${ext}`;
+  const job = make(tmp)
+    .then(() => (fs.existsSync(tmp) && fs.statSync(tmp).size > 0 ? (fs.renameSync(tmp, out), out) : null))
+    .catch(() => null)
+    .finally(() => inflight.delete(out));
+  inflight.set(out, job);
+  return job;
+}
+
+export type VideoMeta = { duration: number; width: number; height: number; fps: number; audio: boolean };
+const metaCache = new Map<string, VideoMeta>();
+export async function videoMeta(video: string): Promise<VideoMeta | null> {
+  const probe = findTool("ffprobe");
+  if (!probe) return null;
+  const key = `${video}|${fs.statSync(video).mtimeMs}`;
+  if (metaCache.has(key)) return metaCache.get(key)!;
+  try {
+    const j = JSON.parse(await runTool(probe, ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", video]));
+    const v = (j.streams ?? []).find((s: { codec_type: string }) => s.codec_type === "video") ?? {};
+    const [n, d] = String(v.avg_frame_rate ?? "30/1").split("/").map(Number);
+    const meta: VideoMeta = {
+      duration: Number(j.format?.duration ?? v.duration ?? 0),
+      width: Number(v.width ?? 0),
+      height: Number(v.height ?? 0),
+      fps: d ? Math.round((n / d) * 100) / 100 : 30,
+      audio: (j.streams ?? []).some((s: { codec_type: string }) => s.codec_type === "audio"),
+    };
+    metaCache.set(key, meta);
+    return meta;
+  } catch {
+    return null;
+  }
+}
+
+const hw = process.platform === "darwin" ? ["-hwaccel", "videotoolbox"] : [];
+
+/** A small still from a third of the way in (at most 1 s), for the media list. */
+export function poster(video: string): Promise<string | null> {
+  const ff = findTool("ffmpeg");
+  if (!ff) return Promise.resolve(null);
+  return cached(video, "poster", "jpg", async (out) => {
+    const at = Math.min(1, ((await videoMeta(video))?.duration ?? 3) / 3);
+    await runTool(ff, ["-y", "-v", "error", "-ss", at.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", out]);
+  });
+}
+
+export const STRIP_FRAMES = 40;
+/** STRIP_FRAMES evenly spaced frames side by side, 112 px tall, for the timeline's video track. */
+export function filmstrip(video: string): Promise<string | null> {
+  const ff = findTool("ffmpeg");
+  if (!ff) return Promise.resolve(null);
+  return cached(video, `strip${STRIP_FRAMES}`, "jpg", async (out) => {
+    const dur = (await videoMeta(video))?.duration || 1;
+    const rate = (STRIP_FRAMES / dur).toFixed(6);
+    await runTool(ff, ["-y", "-v", "error", ...hw, "-i", video, "-an", "-vf", `fps=${rate}:start_time=0,scale=-2:112,tile=${STRIP_FRAMES}x1`, "-frames:v", "1", "-q:v", "5", out]);
+  });
+}
+
+/** The audio as a waveform picture, for the timeline's audio track. */
+export function waveform(video: string): Promise<string | null> {
+  const ff = findTool("ffmpeg");
+  if (!ff) return Promise.resolve(null);
+  return cached(video, "wave", "png", async (out) => {
+    if (!(await videoMeta(video))?.audio) throw new Error("no audio");
+    await runTool(ff, ["-y", "-v", "error", "-i", video, "-filter_complex", "aformat=channel_layouts=mono,showwavespic=s=2400x96:colors=0x7cf5e8:scale=sqrt", "-frames:v", "1", out]);
+  });
 }
 
 // ---------------------------------------------------------------- the page
@@ -288,10 +471,20 @@ export function serveReview(opts: { root: string; port?: number; title?: string 
       }
       if (url.pathname === "/api/videos") return send(res, 200, { root, videos: listVideos(root) });
       if (url.pathname === "/api/video") return streamVideo(req, res, resolveVideo(root, v));
+      if (url.pathname === "/api/meta") return send(res, 200, { meta: await videoMeta(resolveVideo(root, v)), stripFrames: STRIP_FRAMES });
+      if (url.pathname === "/api/poster" || url.pathname === "/api/strip" || url.pathname === "/api/wave") {
+        const video = resolveVideo(root, v);
+        const file = await (url.pathname === "/api/poster" ? poster(video) : url.pathname === "/api/strip" ? filmstrip(video) : waveform(video));
+        if (!file) return send(res, 404, { error: "not available" });
+        res.writeHead(200, { "content-type": file.endsWith(".png") ? "image/png" : "image/jpeg", "cache-control": "private, max-age=86400" });
+        return fs.createReadStream(file).pipe(res);
+      }
       if (url.pathname === "/api/frame") {
         const video = resolveVideo(root, v);
         const note = readNotes(video).find((n) => n.id === url.searchParams.get("id"));
-        const file = note?.frame ? path.join(framesDir(video), path.basename(note.frame)) : "";
+        const which = url.searchParams.get("f");
+        const name = which ? note?.frames?.find((f) => f === which) : note?.frame;
+        const file = name ? path.join(framesDir(video), path.basename(name)) : "";
         if (!file || !fs.existsSync(file)) return send(res, 404, { error: "no frame" });
         res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" });
         return fs.createReadStream(file).pipe(res);
@@ -305,7 +498,15 @@ export function serveReview(opts: { root: string; port?: number; title?: string 
         // Only the page itself may write: a JSON body from this origin.
         if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });
         const body = (await readBody(req)) as Record<string, unknown>;
-        if (req.method === "POST") return send(res, 200, addNote(video, { t: Number(body.t), text: String(body.text ?? ""), frameJpeg: typeof body.frame === "string" ? body.frame : undefined }));
+        if (req.method === "POST") {
+          const note = addNote(video, {
+            t: Number(body.t),
+            end: body.end === undefined || body.end === null ? undefined : Number(body.end),
+            text: String(body.text ?? ""),
+            frameJpeg: typeof body.frame === "string" ? body.frame : undefined,
+          });
+          return send(res, 200, note.end === undefined ? note : ((await addSpanFrames(video, note.id)) ?? note));
+        }
         if (req.method === "PATCH")
           return send(res, 200, updateNote(video, String(body.id ?? ""), {
             status: body.status === "fixed" || body.status === "open" ? body.status : undefined,

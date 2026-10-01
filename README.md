@@ -12,7 +12,7 @@ It runs on your own computer. The moments are picked by [Claude Code](https://cl
 - **A hook on screen.** Big outlined text for the first seconds, with the key words in your highlight colour.
 - **Screen footage over your voice.** Name the words and it puts a screenshot or screen recording on screen while you say them. Your face moves to the bottom half and the captions move to the seam between the two. Screenshots can pan smoothly across the page.
 - **Checks every clip:** vertical format, sound present, loudness at about −14 LUFS, no black frames, no dead air, no leftover rotation tag (the cause of sideways phone video), the opening words, and at least 90% of the words kept. It also makes a contact sheet so you can see the framing at a glance.
-- **A review page for your notes.** Watch a finished clip, press **N** wherever something looks wrong and type what you see. Each note keeps the moment, the caption on screen and a still of the frame, so Claude fixes exactly what you saw.
+- **A review page for your notes.** An editor-style page with a media bin, player and timeline (filmstrip, waveform, zoom). Press **N** wherever something looks wrong, or drag across the timeline to note a few seconds at once, and type what you see. Each note keeps the moment or span, the captions on screen and stills of the frames, so Claude fixes exactly what you saw.
 - **Works with the free [teleprompter](https://github.com/jameselle/teleprompter).** One command joins your kept takes, section by section, into one video ready to clip.
 
 Nothing is ever posted. You get video files.
@@ -56,14 +56,19 @@ clip my teleprompter takes in ~/Movies/Teleprompter/my-script
 npm run review          # http://127.0.0.1:8794, every video under jobs/
 ```
 
-Pick a clip and watch it. When something looks off (a caption covering a graphic, a cut that lands mid-word, the wrong screenshot), press **N**. The video pauses, a still of that exact frame is grabbed, and you type what's wrong. **Enter** saves it.
+Pick a clip from Media and watch it. When something looks off (a caption covering a graphic, a cut that lands mid-word, the wrong screenshot), press **N**. The video pauses, a still of that exact frame is grabbed, and you type what's wrong. **Enter** saves it.
+
+To point at a few seconds rather than one frame, **drag across the notes lane** on the timeline (or press **I** at the start and **O** at the end, then **N**). A span note shows as a bar on the timeline and keeps stills from its start, middle and end, plus every caption shown across it.
 
 | Key | Does |
 |---|---|
 | **Space** | play / pause |
-| **N** | note at this moment |
+| **N** | note at this moment, or on the marked span |
+| **I** / **O** | mark the start / end of a span (**Esc** clears it) |
 | **← →** | back / forward 1 s (**Shift** for 5 s) |
 | **, .** | one frame back / forward |
+| **+ −** | zoom the timeline (**⌘ scroll** too; **Shift Z** fits it) |
+| **F** | full screen |
 
 Then tell Claude Code:
 
@@ -71,7 +76,7 @@ Then tell Claude Code:
 fix my review notes on jobs/<job>/<clip>-vertical.mp4
 ```
 
-The `clip` skill reads every note and its frame, changes the spec, re-renders, re-checks, and marks each note fixed with what it changed. Fixed notes stay on the page (tick **show fixed**), and a note written on an earlier render is marked **earlier cut**. Notes are saved beside the video, as `<clip>.review.json` with the frame stills in `<clip>.review/`. The page only answers on 127.0.0.1 and only reads videos inside the folder you give it. `npm run review -- ~/some/folder` reviews any folder of videos.
+The `clip` skill reads every note and its frame, changes the spec, re-renders, re-checks, and marks each note fixed with what it changed. Fixed notes stay on the page (tick **show fixed**), and a note written on an earlier render is marked **earlier cut**. Notes are saved beside the video, as `<clip>.review.json` with the frame stills in `<clip>.review/`. The filmstrip, waveform and thumbnails are made by FFmpeg the first time a video is opened and cached in your temp folder. The page only answers on 127.0.0.1 and only reads videos inside the folder you give it. `npm run review -- ~/some/folder` reviews any folder of videos.
 
 ## Use it by hand
 
