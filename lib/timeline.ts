@@ -5,7 +5,9 @@
 import type { EditSpec, Format } from "./spec";
 
 export type Word = { w: string; start: number; end: number }; // seconds, source timeline
-export type Piece = { source: string; start: number; end: number; outStart: number };
+/** `seg`: the spec segment a piece came from. Gaps inside a segment are trimmed pauses; gaps between segments are
+ *  the owner's cuts. */
+export type Piece = { source: string; start: number; end: number; outStart: number; seg?: number };
 
 /** Split each segment at pauses longer than `maxPause`, keeping a little air either side.
  *  Pauses come from the audio's own silence (FFmpeg silencedetect) when available: whisper
@@ -15,7 +17,7 @@ export function keepPieces(spec: EditSpec, words: Record<string, Word[]>, silenc
   const pad = 0.15; // seconds of air kept either side of a cut
   const out: Piece[] = [];
   let t = 0;
-  for (const seg of spec.segments) {
+  for (const [segIdx, seg] of spec.segments.entries()) {
     // Gaps to remove inside this segment, as [start, end] on the source clock.
     let gaps: [number, number][] = [];
     if (maxPause > 0) {
@@ -38,7 +40,7 @@ export function keepPieces(spec: EditSpec, words: Record<string, Word[]>, silenc
     ranges.push([a, seg.end]);
     for (const [s0, e0] of ranges) {
       if (e0 - s0 < 0.05) continue;
-      out.push({ source: seg.source, start: round(s0), end: round(e0), outStart: round(t) });
+      out.push({ source: seg.source, start: round(s0), end: round(e0), outStart: round(t), seg: segIdx });
       t += e0 - s0;
     }
   }
@@ -62,9 +64,10 @@ export function outputWords(pieces: Piece[], words: Record<string, Word[]>): Wor
   const out: Word[] = [];
   pieces.forEach((p, k) => {
     const next = pieces[k + 1];
-    // The pause trimmed between this piece and the next one from the same source: whisper dates a sentence's
+    // The pause trimmed between this piece and the next one from the same segment: whisper dates a sentence's
     // last word late, sometimes inside that silence, though it was said just before it. It belongs here.
-    const gapEnd = next && next.source === p.source && next.start > p.end ? next.start : p.end;
+    // A gap between two segments is a part the owner cut out: its words were never in the video.
+    const gapEnd = next && next.source === p.source && next.seg === p.seg && next.start > p.end ? next.start : p.end;
     for (const w of words[p.source] ?? []) {
       // whisper stretches a sentence's last word across the pause after it, so judge a word by when it starts
       // (cuts only happen in silence): its midpoint can land in the trimmed pause and drop a word that's heard.

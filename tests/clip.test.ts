@@ -255,6 +255,14 @@ test("a sentence's last word stays in the edit when whisper stretches it past wh
   assert.deepEqual(outputWords(pieces, words).map((w) => w.w), ["saw", "zero.", "No"]);
 });
 
+test("words in a part the owner cut out (between two segments of one source) are not captioned", () => {
+  // Real case (Day 2 recut): segments 0-35 and 43-67 of one master. The late-word rule pulled every word of the cut
+  // 35-43 into the first piece, so the captions said lines that were never in the video and ran behind the voice.
+  const pieces = keepPieces(spec({ segments: [{ source: "a", start: 0, end: 5 }, { source: "a", start: 9, end: 12 }] }), {});
+  const words = { a: [W("you.", 4.2, 4.86), W("And", 5.0, 5.2), W("here's", 5.3, 5.6), W("bugs", 6, 6.4), W("me.", 6.4, 7), W("Here's", 9.1, 9.4), W("what", 9.4, 9.6)] };
+  assert.deepEqual(outputWords(pieces, words).map((w) => w.w), ["you.", "Here's", "what"]);
+});
+
 test("a word whisper dates inside a trimmed pause was said just before it: it stays, at the end of the piece", () => {
   // Real case (Day 2): "worked." is dated 0.2 s into the silence that the pause trim removes.
   const pieces = keepPieces(spec({ segments: [{ source: "a", start: 0, end: 10 }], tightenPauses: 0.5 }), {}, { a: [[4.0, 6.0]] });
