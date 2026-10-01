@@ -153,6 +153,12 @@ say "fix my review notes on <video>":
 5. `npm run clip -- notes-fixed <video> <note-id> "<what changed>"` for each note you fixed. Leave a
    note open when you didn't fix it, and tell the user why.
 
+**Cuts and speed.** On the same page the user can mark parts to delete (the cuts lane, or I/O then X) and
+an export speed, then press **Apply edits**, which re-renders and checks it. When they ask you to apply them
+instead: `npm run clip -- apply-edits <video>` (the spec is backed up as `spec.before-edits-<time>.json`; a
+cutaway left mostly inside a cut is dropped, and the command names it). A render made before this existed has
+no `<format>.map.json`: render it once, then edits can apply.
+
 ## Rules
 
 - Only add music the user has the rights to use. MusicGen's weights are non-commercial: never in monetised posts.

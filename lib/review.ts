@@ -93,25 +93,78 @@ export const notesFile = (video: string) => video.replace(/\.mp4$/i, ".review.js
 export const framesDir = (video: string) => video.replace(/\.mp4$/i, ".review");
 const renderStamp = (video: string) => fs.statSync(video).mtime.toISOString();
 
-export function readNotes(video: string): ReviewNote[] {
+/** A span to delete from the video, on the timeline of the render being watched. */
+export type ReviewCut = { id: string; t: number; end: number; createdAt: string };
+type ReviewDoc = { video: string; notes: ReviewNote[]; cuts?: ReviewCut[]; speed?: number };
+
+function readDoc(video: string): ReviewDoc {
   try {
     const raw = JSON.parse(fs.readFileSync(notesFile(video), "utf8"));
-    return Array.isArray(raw?.notes) ? (raw.notes as ReviewNote[]) : [];
+    return {
+      video: path.basename(video),
+      notes: Array.isArray(raw?.notes) ? raw.notes : [],
+      cuts: Array.isArray(raw?.cuts) ? raw.cuts : [],
+      ...(typeof raw?.speed === "number" ? { speed: raw.speed } : {}),
+    };
   } catch {
-    return [];
+    return { video: path.basename(video), notes: [], cuts: [] };
   }
 }
 
-function writeNotes(video: string, notes: ReviewNote[]) {
-  const sorted = [...notes].sort((a, b) => a.t - b.t);
+function writeDoc(video: string, doc: ReviewDoc) {
+  const out: ReviewDoc = { video: path.basename(video), notes: [...doc.notes].sort((a, b) => a.t - b.t) };
+  if (doc.cuts?.length) out.cuts = [...doc.cuts].sort((a, b) => a.t - b.t);
+  if (doc.speed !== undefined) out.speed = doc.speed;
+  if (!out.notes.length && !out.cuts && out.speed === undefined) return void fs.rmSync(notesFile(video), { force: true }); // nothing left: no empty file
   const tmp = notesFile(video) + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify({ video: path.basename(video), notes: sorted }, null, 2) + "\n");
+  fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + "\n");
   fs.renameSync(tmp, notesFile(video));
 }
 
-const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+export function readNotes(video: string): ReviewNote[] {
+  return readDoc(video).notes;
+}
+
+function writeNotes(video: string, notes: ReviewNote[]) {
+  writeDoc(video, { ...readDoc(video), notes });
+}
+
+/** The edits waiting to be applied: spans to delete, and the speed to post at (absent: unchanged). */
+export function readEdits(video: string): { cuts: ReviewCut[]; speed?: number } {
+  const d = readDoc(video);
+  return { cuts: d.cuts ?? [], ...(d.speed !== undefined ? { speed: d.speed } : {}) };
+}
+
+export function addCut(video: string, input: { t: number; end: number }): ReviewCut {
+  const t = r2(Number(input.t));
+  const end = r2(Number(input.end));
+  if (!(Number.isFinite(t) && t >= 0 && Number.isFinite(end))) throw new Error("a cut needs a start and an end");
+  if (end - t < 0.05) throw new Error("a cut must be longer than 0.05 s");
+  const cut: ReviewCut = { id: newId(), t, end, createdAt: new Date().toISOString() };
+  const doc = readDoc(video);
+  writeDoc(video, { ...doc, cuts: [...(doc.cuts ?? []), cut] });
+  return cut;
+}
+
+export function deleteCut(video: string, id: string) {
+  const doc = readDoc(video);
+  if (!(doc.cuts ?? []).some((c) => c.id === id)) throw new Error("no such cut");
+  writeDoc(video, { ...doc, cuts: (doc.cuts ?? []).filter((c) => c.id !== id) });
+}
+
+/** The speed to post at, from 0.5 to 3 (null: leave the render's speed as it is). */
+export function setExportSpeed(video: string, speed: number | null) {
+  const doc = readDoc(video);
+  if (speed === null) delete doc.speed;
+  else {
+    if (!(typeof speed === "number" && speed >= 0.5 && speed <= 3)) throw new Error("speed: 0.5 to 3");
+    doc.speed = Math.round(speed * 100) / 100;
+  }
+  writeDoc(video, doc);
+}
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /** `end`: for a note about a span. `frameJpeg`: the frame at `t` as base64 JPEG (a data: URL prefix is fine). */
 export function addNote(video: string, input: { t: number; end?: number; text: string; frameJpeg?: string }): ReviewNote {
@@ -170,9 +223,7 @@ export function deleteNote(video: string, id: string) {
   const note = notes.find((n) => n.id === id);
   if (!note) throw new Error("no such note");
   for (const f of [note.frame, ...(note.frames ?? [])]) if (f) fs.rmSync(path.join(framesDir(video), path.basename(f)), { force: true });
-  const left = notes.filter((n) => n.id !== id);
-  if (left.length) writeNotes(video, left);
-  else fs.rmSync(notesFile(video), { force: true }); // the last note: leave no empty file behind
+  writeNotes(video, notes.filter((n) => n.id !== id)); // the last of everything: no empty file is left
   try {
     fs.rmdirSync(framesDir(video)); // only succeeds when no frames are left
   } catch {
@@ -277,6 +328,105 @@ export function formatNotes(video: string, notes: ReviewNote[], all = false): st
     if (n.fix) lines.push(`      fix:     ${n.fix}`);
   }
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------- applying cuts and speed
+// A render writes `<format>.map.json` beside itself: the spec it came from, the speed it plays at, and
+// which stretch of which source each part of the (1x) output is. That turns "delete 0:40-0:44 of what I'm
+// watching" into new spec segments.
+
+type MapPiece = { source: string; start: number; end: number; outStart: number };
+export type RenderMap = { spec: string; speed: number; pieces: MapPiece[]; cutaways: { start: number; end: number }[] };
+
+export function mapFileFor(video: string): string | null {
+  const m = path.basename(video).match(/-(vertical|landscape|square)\.mp4$/i);
+  if (!m) return null;
+  const f = path.join(path.dirname(video), `${m[1].toLowerCase()}.map.json`);
+  return fs.existsSync(f) ? f : null;
+}
+
+export function readMap(video: string): RenderMap | null {
+  const f = mapFileFor(video);
+  try {
+    return f ? (JSON.parse(fs.readFileSync(f, "utf8")) as RenderMap) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Cuts on the watched render (which plays at `map.speed`) → the segments that remain, the cutaways a cut
+ *  swallows (at least half inside it), and how many seconds of the 1x edit go. */
+export function planEdits(map: RenderMap, cuts: { t: number; end: number }[]) {
+  const k = map.speed || 1;
+  const spans = cuts.map((c) => [c.t * k, c.end * k] as [number, number]).sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const s of spans) {
+    const last = merged.at(-1);
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+    else merged.push([...s]);
+  }
+  const r3 = (x: number) => Math.round(x * 1000) / 1000;
+  const segments: { source: string; start: number; end: number }[] = [];
+  let removed = 0;
+  for (const p of map.pieces) {
+    const a = p.outStart;
+    const b = p.outStart + (p.end - p.start);
+    let at = a;
+    for (const [x, y] of merged) {
+      if (y <= at || x >= b) continue;
+      const from = Math.max(x, at);
+      const to = Math.min(y, b);
+      if (from - at >= 0.05) segments.push({ source: p.source, start: r3(p.start + (at - a)), end: r3(p.start + (from - a)) });
+      removed += to - from;
+      at = to;
+    }
+    if (b - at >= 0.05) segments.push({ source: p.source, start: r3(p.start + (at - a)), end: r3(p.end) });
+  }
+  const inside = (w: { start: number; end: number }) =>
+    merged.reduce((sum, [x, y]) => sum + Math.max(0, Math.min(y, w.end) - Math.max(x, w.start)), 0);
+  const dropCutaways = map.cutaways.map((w, i) => (w.end > w.start && inside(w) >= (w.end - w.start) / 2 ? i : -1)).filter((i) => i >= 0);
+  return { segments, dropCutaways, removed: r3(removed) };
+}
+
+/** Writes the cuts and speed into the spec (the old one kept as spec.before-edits-<time>.json), renders it
+ *  through `render`, then clears the applied edits. If the render fails, the spec goes back as it was. */
+export async function applyEdits(video: string, render: (specFile: string) => Promise<string | void>): Promise<{ removed: number; droppedCutaways: string[]; speed?: number; qa?: string }> {
+  const map = readMap(video);
+  if (!map || !fs.existsSync(map.spec)) throw new Error("this video has no edit map yet: render it once more with Studio, then cuts can be applied");
+  const edits = readEdits(video);
+  if (!edits.cuts.length && edits.speed === undefined) throw new Error("nothing to apply: mark a cut or choose an export speed first");
+  const before = fs.readFileSync(map.spec, "utf8");
+  const spec = JSON.parse(before);
+  let removed = 0;
+  const droppedCutaways: string[] = [];
+  if (edits.cuts.length) {
+    const plan = planEdits(map, edits.cuts);
+    if (!plan.segments.length) throw new Error("those cuts would delete the whole video");
+    spec.segments = plan.segments;
+    removed = plan.removed;
+    if (Array.isArray(spec.cutaways)) {
+      for (const i of plan.dropCutaways) if (spec.cutaways[i]) droppedCutaways.push(`${path.basename(spec.cutaways[i].file)} ("${spec.cutaways[i].from}")`);
+      spec.cutaways = spec.cutaways.filter((_: unknown, i: number) => !plan.dropCutaways.includes(i));
+    }
+  }
+  if (edits.speed !== undefined) {
+    if (edits.speed === 1) delete spec.speed;
+    else spec.speed = edits.speed;
+  }
+  const stampNow = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.writeFileSync(path.join(path.dirname(map.spec), `spec.before-edits-${stampNow}.json`), before);
+  fs.writeFileSync(map.spec, JSON.stringify(spec, null, 2) + "\n");
+  let qa: string | void;
+  try {
+    qa = await render(map.spec);
+  } catch (e) {
+    fs.writeFileSync(map.spec, before);
+    throw e;
+  }
+  const doc = readDoc(video);
+  delete doc.speed;
+  writeDoc(video, { ...doc, cuts: [] });
+  return { removed, droppedCutaways, ...(edits.speed !== undefined ? { speed: edits.speed } : {}), ...(qa ? { qa } : {}) };
 }
 
 // ---------------------------------------------------------------- media for the page (FFmpeg)
@@ -539,7 +689,12 @@ function streamVideo(req: http.IncomingMessage, res: http.ServerResponse, file: 
 }
 
 /** The review page on http://127.0.0.1:<port>, for every video under `root`. */
-export function serveReview(opts: { root: string; port?: number; title?: string }): http.Server {
+type ApplyJob = { state: "running" | "done" | "failed"; startedAt: string; finishedAt?: string; error?: string; result?: unknown };
+
+/** `render`: how this host re-renders a spec (HQ: studio render; the clipper: clip render). Without it the page
+ *  can mark cuts but not apply them. */
+export function serveReview(opts: { root: string; port?: number; title?: string; render?: (specFile: string) => Promise<string | void> }): http.Server {
+  const jobs = new Map<string, ApplyJob>();
   const root = path.resolve(opts.root);
   const port = opts.port ?? 8794;
   const page = REVIEW_PAGE.split("{{TITLE}}").join((opts.title ?? "Review").replace(/[<>&"]/g, ""));
@@ -581,11 +736,39 @@ export function serveReview(opts: { root: string; port?: number; title?: string 
         const body = (await readBody(req, 1_000_000)) as { plans?: unknown };
         return send(res, 200, { plans: savePlans(root, body.plans) });
       }
+      if (url.pathname === "/api/cuts" || url.pathname === "/api/speed" || url.pathname === "/api/apply") {
+        const video = resolveVideo(root, v);
+        if (url.pathname === "/api/apply" && req.method === "GET") return send(res, 200, jobs.get(video) ?? { state: "idle" });
+        if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });
+        const body = (await readBody(req, 100_000)) as Record<string, unknown>;
+        if (url.pathname === "/api/cuts" && req.method === "POST") return send(res, 200, addCut(video, { t: Number(body.t), end: Number(body.end) }));
+        if (url.pathname === "/api/cuts" && req.method === "DELETE") {
+          deleteCut(video, String(body.id ?? ""));
+          return send(res, 200, { ok: true });
+        }
+        if (url.pathname === "/api/speed" && req.method === "PUT") {
+          setExportSpeed(video, body.speed === null || body.speed === undefined ? null : Number(body.speed));
+          return send(res, 200, readEdits(video));
+        }
+        if (url.pathname === "/api/apply" && req.method === "POST") {
+          if (!opts.render) return send(res, 501, { error: "this page can't render: ask Claude to apply the edits" });
+          if (jobs.get(video)?.state === "running") return send(res, 409, { error: "already rendering" });
+          const job: ApplyJob = { state: "running", startedAt: new Date().toISOString() };
+          jobs.set(video, job);
+          applyEdits(video, opts.render).then(
+            (result) => Object.assign(job, { state: "done", result, finishedAt: new Date().toISOString() }),
+            (e) => Object.assign(job, { state: "failed", error: e instanceof Error ? e.message : String(e), finishedAt: new Date().toISOString() }),
+          );
+          return send(res, 200, job);
+        }
+        return send(res, 405, { error: "not allowed" });
+      }
       if (url.pathname === "/api/notes") {
         const video = resolveVideo(root, v);
         if (req.method === "GET") {
           const notes = readNotes(video).map((n) => ({ ...n, earlierCut: isEarlierCut(video, n) }));
-          return send(res, 200, { video: v, render: renderStamp(video), notes });
+          const map = readMap(video);
+          return send(res, 200, { video: v, render: renderStamp(video), notes, edits: readEdits(video), applied: { speed: map?.speed ?? 1, editable: Boolean(map && opts.render) } });
         }
         // Only the page itself may write: a JSON body from this origin.
         if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });

@@ -66,6 +66,7 @@ To point at a few seconds rather than one frame, **drag across the notes lane** 
 | **Space** | play / pause |
 | **N** | note at this moment, or on the marked span |
 | **I** / **O** | mark the start / end of a span (**Esc** clears it) |
+| **X** | cut the marked span out (**Delete** removes a selected cut) |
 | **← →** | back / forward 1 s (**Shift** for 5 s) |
 | **, .** | one frame back / forward |
 | **+ −** | zoom the timeline (**⌘ scroll** too; **Shift Z** fits it) |
@@ -78,6 +79,10 @@ fix my review notes on jobs/<job>/<clip>-vertical.mp4
 ```
 
 The `clip` skill reads every note and its frame, changes the spec, re-renders, re-checks, and marks each note fixed with what it changed. Fixed notes stay on the page (tick **show fixed**), and a note written on an earlier render is marked **earlier cut**. Notes are saved beside the video, as `<clip>.review.json` with the frame stills in `<clip>.review/`. The filmstrip, waveform and thumbnails are made by FFmpeg the first time a video is opened and cached in your temp folder. The page only answers on 127.0.0.1 and only reads videos inside the folder you give it. `npm run review -- ~/some/folder` reviews any folder of videos.
+
+### Cut parts out, and post faster
+
+Drag across the **cuts lane** (the scissors row) to mark a part to delete, or mark it with **I** and **O** and press **X**. Playback skips marked cuts (**Skip cuts** in the timeline bar), so you watch the result before anything renders. Pick an **Export** speed at the top (1.25× to 2×: the voice keeps its pitch), and **Apply edits** re-renders the clip with both: it rewrites the spec (the old one is kept as `spec.before-edits-<time>.json`), drops any cutaway that would sit inside a cut, runs the checks, and reloads. Each render writes `<format>.map.json` beside the clip, which is how a cut on the finished clip finds its place in your footage; a clip rendered before this version needs one more render first. From Claude Code: `npm run clip -- apply-edits <clip>`.
 
 ### Plan the grid
 

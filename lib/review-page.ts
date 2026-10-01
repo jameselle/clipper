@@ -42,7 +42,7 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   .muted { color:var(--text3); }
 
   /* shell */
-  .app { display:grid; grid-template-rows:48px minmax(0,1fr) 236px; height:100vh; }
+  .app { display:grid; grid-template-rows:48px minmax(0,1fr) 256px; height:100vh; }
   .top { display:flex; align-items:center; gap:14px; padding:0 14px; border-bottom:1px solid var(--line); background:var(--panel); }
   .brand { display:flex; align-items:center; gap:9px; font-weight:600; letter-spacing:-.01em; min-width:260px; }
   .brand .mark { width:22px; height:22px; border-radius:6px; background:linear-gradient(135deg,var(--accent),#2a8cff); display:grid; place-items:center; color:#04201c; }
@@ -159,7 +159,7 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   input[type=range] { -webkit-appearance:none; appearance:none; width:110px; height:3px; border-radius:3px; background:var(--line2); outline:none; }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:var(--text); cursor:pointer; }
   .tlbody { display:grid; grid-template-columns:44px minmax(0,1fr); min-height:0; }
-  .heads { border-right:1px solid var(--line); display:grid; grid-template-rows:26px 28px 62px 42px; }
+  .heads { border-right:1px solid var(--line); display:grid; grid-template-rows:26px 28px 26px 62px 42px; }
   .heads div { display:grid; place-items:center; color:var(--text3); }
   .heads svg { width:14px; height:14px; }
   .tracks { overflow-x:auto; overflow-y:hidden; position:relative; cursor:text; }
@@ -168,6 +168,19 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   .ruler canvas { position:absolute; left:0; top:0; }
   .lane { height:28px; position:relative; border-bottom:1px solid var(--line); cursor:crosshair; }
   .lane .ph { position:absolute; left:8px; top:7px; font-size:11px; color:var(--text3); pointer-events:none; white-space:nowrap; }
+  .cutlane { height:26px; position:relative; border-bottom:1px solid var(--line); cursor:crosshair; }
+  .cutlane .ph { position:absolute; left:8px; top:6px; font-size:11px; color:var(--text3); pointer-events:none; white-space:nowrap; }
+  .cutr { position:absolute; top:4px; height:18px; border-radius:5px; cursor:pointer; z-index:3;
+    background:repeating-linear-gradient(135deg,rgba(255,93,93,.55) 0 6px,rgba(255,93,93,.25) 6px 12px); border:1px solid rgba(255,93,93,.9); }
+  .cutr.on { box-shadow:0 0 0 2px var(--panel), 0 0 0 4px rgba(255,93,93,.6); }
+  .cutr .x { position:absolute; right:-7px; top:-7px; width:16px; height:16px; border-radius:50%; background:#ff5d5d; color:#fff; display:none; place-items:center; }
+  .cutr .x svg { width:10px; height:10px; stroke-width:3; }
+  .cutr:hover .x, .cutr.on .x { display:grid; }
+  .cutshade { position:absolute; top:80px; bottom:0; background:rgba(255,93,93,.16); border-left:1px solid rgba(255,93,93,.6); border-right:1px solid rgba(255,93,93,.6); pointer-events:none; z-index:2; }
+  .exportsel { height:30px; }
+  .btn.busy { background:var(--raised); color:var(--text2); cursor:progress; }
+  .spin { width:13px; height:13px; border-radius:50%; border:2px solid var(--line2); border-top-color:var(--accent); animation:rot .8s linear infinite; }
+  @keyframes rot { to { transform:rotate(360deg); } }
   .vtrack { height:62px; position:relative; padding:4px 0; }
   .atrack { height:42px; position:relative; padding:4px 0 6px; }
   .clip { position:absolute; top:4px; bottom:4px; left:0; border-radius:7px; overflow:hidden; background:var(--panel2); border:1px solid #3a3a42; }
@@ -287,7 +300,7 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   .btn.dangerous:hover { color:var(--danger); }
   .tip2 { margin:12px; padding:10px 12px; border-radius:10px; background:var(--panel2); color:var(--text2); font-size:12px; line-height:1.55; }
 
-  .toast { position:fixed; left:50%; bottom:252px; transform:translateX(-50%) translateY(8px); background:#2a2a30; border:1px solid var(--line2); color:var(--text); padding:8px 14px; border-radius:10px; font-size:12.5px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; z-index:30; box-shadow:0 10px 30px -10px rgba(0,0,0,.7); }
+  .toast { position:fixed; left:50%; bottom:272px; transform:translateX(-50%) translateY(8px); background:#2a2a30; border:1px solid var(--line2); color:var(--text); padding:8px 14px; border-radius:10px; font-size:12.5px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; z-index:30; box-shadow:0 10px 30px -10px rgba(0,0,0,.7); }
   .toast.on { opacity:1; transform:translateX(-50%); }
   @media (max-width:1180px) { .work { grid-template-columns:230px minmax(0,1fr) 300px; } .brand, .topright { min-width:0; } }
 </style>
@@ -301,6 +314,8 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
     <div class="topright">
       <span class="saved" id="savedLbl"></span>
       <span class="chip accent" id="openChip" hidden><span class="dot"></span><span id="openCount"></span></span>
+      <select class="field exportsel" id="exportSel" title="The speed the video is rendered (and posted) at" hidden></select>
+      <button class="btn accent" id="applyBtn" hidden></button>
       <button class="btn" id="copyAsk" hidden><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>Copy request for Claude</button>
     </div>
   </header>
@@ -356,6 +371,7 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
         <span class="sep"></span>
         <button class="btn ghost" id="markIn" title="Start a span at the playhead  I"><svg viewBox="0 0 24 24"><path d="M8 4v16M8 12h10"/></svg>In<kbd>I</kbd></button>
         <button class="btn ghost" id="markOut" title="End the span at the playhead  O"><svg viewBox="0 0 24 24"><path d="M16 4v16M6 12h10"/></svg>Out<kbd>O</kbd></button>
+        <button class="btn ghost" id="cutBtn" title="Cut the marked span out  X"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M14.5 9.5 20 4M8.1 15.9l3.4-3.4"/></svg>Cut<kbd>X</kbd></button>
         <span class="range" id="rangeLbl"><span id="rangeTxt"></span><button class="icon" id="rangeClear" title="Clear the span  Esc" style="width:22px;height:22px"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></span>
       </div>
       <div class="right">
@@ -363,18 +379,22 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
         <input type="range" id="zoom" min="0" max="100" value="0">
         <button class="icon" id="zIn" title="Zoom in  +"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-3.5-3.5"/></svg></button>
         <button class="btn ghost" id="zFit" title="Fit the whole video  Shift+Z">Fit</button>
+        <span class="sep"></span>
+        <button class="btn ghost" id="skipBtn" title="While playing, jump over the parts marked to cut"><svg viewBox="0 0 24 24"><path d="M5 4l10 8-10 8zM19 5v14"/></svg>Skip cuts</button>
       </div>
     </div>
     <div class="tlbody">
       <div class="heads">
         <div></div>
         <div title="Notes"><svg viewBox="0 0 24 24"><path d="M5 21V4h11l-2 4 2 4H5"/></svg></div>
+        <div title="Cuts: parts to delete"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M14.5 9.5 20 4M8.1 15.9l3.4-3.4"/></svg></div>
         <div title="Video"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg></div>
         <div title="Audio"><svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></div>
       </div>
       <div class="tracks" id="tracks"><div class="inner" id="inner">
         <div class="ruler"><canvas id="ruler"></canvas></div>
         <div class="lane" id="lane"><span class="ph" id="lanePh">Drag here to note a span</span></div>
+        <div class="cutlane" id="cutLane"><span class="ph" id="cutPh">Drag here to cut a part out</span></div>
         <div class="vtrack"><div class="clip" id="clip"><div class="tiles" id="tiles"></div><span class="cl" id="clipName"></span></div></div>
         <div class="atrack"><div class="aclip" id="aclip"><img id="wave" alt=""></div></div>
         <div class="sel" id="sel"></div>
@@ -414,7 +434,9 @@ var ICON = {
   quote: '<svg viewBox="0 0 24 24"><path d="M7 7h4v4H8a3 3 0 0 0 3 3M14 7h4v4h-3a3 3 0 0 0 3 3"/></svg>'
 };
 var S = { videos: [], cur: null, meta: null, fps: 30, notes: [], tab: "open", edited: true, zoom: 0, pps: 1, inT: null, outT: null,
-          pending: null, selected: null, editing: null, confirmDel: null, speeds: [0.5, 1, 1.5, 2], speedIdx: 1, stripN: 40 };
+          pending: null, selected: null, editing: null, confirmDel: null, speeds: [0.5, 1, 1.5, 2], speedIdx: 1, stripN: 40,
+          cuts: [], cutSel: null, skip: true, exportSpeed: null, appliedSpeed: 1, editable: false, applying: null };
+var EXPORTS = [1, 1.25, 1.5, 1.75, 2];
 var RENDER = /-(vertical|landscape|square)\.mp4$/i;
 
 function el(tag, props) { var e = document.createElement(tag); if (props) for (var k in props) { if (k === "html") e.innerHTML = props[k]; else if (k === "style") e.style.cssText = props[k]; else e[k] = props[k]; }
@@ -425,6 +447,7 @@ function tc(t) { t = Math.max(0, t || 0); var f = Math.floor((t % 1) * S.fps + 1
 function short(t) { t = Math.max(0, t || 0); return Math.floor(t / 60) + ":" + (t % 60).toFixed(1).padStart(4, "0"); }
 function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove("on"); }, 2200); }
 function q() { return "?v=" + encodeURIComponent(S.cur); }
+function ver(v) { var x = S.videos.find(function (y) { return y.v === v; }); return x ? "&m=" + encodeURIComponent(x.mtime) : ""; }
 function api(path, opts) { opts = opts || {};
   return fetch(path, { method: opts.method || "GET", body: opts.body ? JSON.stringify(opts.body) : undefined, headers: opts.body ? { "content-type": "application/json" } : {} })
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || r.statusText); return j; }); }); }
@@ -446,7 +469,7 @@ function drawMedia() {
   var grid = el("div", { className: "grid" });
   list.forEach(function (v) {
       var p = prettyJob(v.folder);
-      var img = el("img", { loading: "lazy", alt: "", src: "/api/poster?v=" + encodeURIComponent(v.v) });
+      var img = el("img", { loading: "lazy", alt: "", src: "/api/poster?v=" + encodeURIComponent(v.v) + "&m=" + encodeURIComponent(v.mtime) });
       var th = el("div", { className: "thumb shimmer" }, img,
         v.open ? el("span", { className: "badge chip accent", textContent: String(v.open) }) : v.total ? el("span", { className: "badge chip", html: ICON.check }) : null);
       img.onload = function () { img.classList.add("ok"); th.classList.remove("shimmer"); };
@@ -461,10 +484,10 @@ function drawMedia() {
 
 /* ---------------- player */
 function select(v) {
-  S.cur = v; S.inT = S.outT = null; S.selected = null; S.editing = null; closeCompose(); history.replaceState(null, "", "#v=" + encodeURIComponent(v));
+  S.cur = v; S.inT = S.outT = null; S.selected = null; S.editing = null; S.cutSel = null; S.cuts = []; closeCompose(); history.replaceState(null, "", "#v=" + encodeURIComponent(v));
   var name = v.split("/").pop(), p = prettyJob(v.split("/").slice(0, -1).join("/"));
   $("file").replaceChildren(el("b", { textContent: name }), el("span", { textContent: (p.biz ? p.biz + " · " : "") + p.name }));
-  var vid = el("video", { id: "video", src: "/api/video" + q(), preload: "auto", playsInline: true });
+  var vid = el("video", { id: "video", src: "/api/video" + q() + ver(v), preload: "auto", playsInline: true });
   vid.addEventListener("click", togglePlay);
   vid.addEventListener("play", syncPlay); vid.addEventListener("pause", syncPlay);
   vid.addEventListener("loadedmetadata", function () { fitVideo(); layout(); });
@@ -473,12 +496,12 @@ function select(v) {
   vid.playbackRate = S.speeds[S.speedIdx];
   $("stage").replaceChildren(vid); fitVideo(); syncPlay();
   $("clipName").textContent = name.replace(/\.mp4$/i, "");
-  $("tiles").replaceChildren(); $("wave").classList.remove("ok"); $("wave").src = "/api/wave" + q();
+  $("tiles").replaceChildren(); $("wave").classList.remove("ok"); $("wave").src = "/api/wave" + q() + ver(v);
   $("wave").onload = function () { $("wave").classList.add("ok"); };
   S.meta = null; $("metaLine").textContent = "";
   api("/api/meta" + q()).then(function (j) { S.meta = j.meta; S.stripN = j.stripFrames || 40; if (S.meta) { S.fps = S.meta.fps || 30;
     $("metaLine").textContent = S.meta.width + "×" + S.meta.height + " · " + Math.round(S.fps) + " fps · " + short(S.meta.duration); } layout(); }).catch(function () {});
-  S.strip = new Image(); S.strip.onload = function () { drawTiles(); }; S.strip.src = "/api/strip" + q();
+  S.strip = new Image(); S.strip.onload = function () { drawTiles(); }; S.strip.src = "/api/strip" + q() + ver(v);
   drawMedia(); loadNotes(); layout(); tick();
 }
 /* The video is sized to the stage in script: a percentage height inside a flex/grid cell doesn't constrain it. */
@@ -490,7 +513,9 @@ function fitVideo() {
 }
 function togglePlay() { var v = video(); if (!v) return; if (v.paused) v.play(); else v.pause(); }
 function syncPlay() { var v = video(); $("play").innerHTML = v && !v.paused ? ICON.pause : ICON.play; if (v && !v.paused) loop(); }
-function loop() { var v = video(); if (!v || v.paused) return; tick(true); requestAnimationFrame(loop); }
+function loop() { var v = video(); if (!v || v.paused) return; skipCuts(v); tick(true); requestAnimationFrame(loop); }
+function skipCuts(v) { if (!S.skip || v.paused) return; var t = v.currentTime;
+  var c = S.cuts.find(function (x) { return t >= x.t && t < x.end - 0.02; }); if (c) v.currentTime = Math.min(dur(), c.end + 0.01); }
 function seek(t) { var v = video(); if (!v) return; v.currentTime = Math.max(0, Math.min(dur() || 0, t)); tick(); }
 function step(n) { var v = video(); if (!v) return; v.pause(); seek(v.currentTime + n / S.fps); }
 function tick(follow) {
@@ -511,7 +536,7 @@ function layout() {
   var w = Math.max($("tracks").clientWidth, d * S.pps + 24);
   $("inner").style.width = w + "px";
   $("clip").style.width = $("aclip").style.width = (d * S.pps) + "px";
-  drawRuler(w); drawTiles(); drawMarkers(); drawSel(); tick();
+  drawRuler(w); drawTiles(); drawMarkers(); drawCuts(); drawSel(); tick();
 }
 function drawRuler(w) {
   var c = $("ruler"), dpr = window.devicePixelRatio || 1, h = 26; c.width = w * dpr; c.height = h * dpr; c.style.width = w + "px"; c.style.height = h + "px";
@@ -559,11 +584,12 @@ function drawSel() {
 function xToT(e) { var r = $("inner").getBoundingClientRect(); return Math.max(0, Math.min(dur(), (e.clientX - r.left) / S.pps)); }
 $("tracks").addEventListener("pointerdown", function (e) {
   if (!video() || e.button !== 0) return;
-  var inLane = e.target.closest("#lane"), start = xToT(e), moved = false; $("tracks").setPointerCapture(e.pointerId);
+  var inLane = e.target.closest("#lane") || e.target.closest("#cutLane"), cutting = !!e.target.closest("#cutLane"), start = xToT(e), moved = false; $("tracks").setPointerCapture(e.pointerId);
   if (inLane) { video().pause(); S.inT = start; S.outT = null; drawSel(); } else seek(start);
   function mv(ev) { var t = xToT(ev); if (inLane) { if (Math.abs(t - start) * S.pps > 3) moved = true; S.outT = t; drawSel(); seek(t); } else seek(t); }
   function up(ev) { $("tracks").removeEventListener("pointermove", mv); $("tracks").removeEventListener("pointerup", up);
-    if (inLane) { if (moved && Math.abs(S.outT - S.inT) >= 0.1) { normaliseRange(); seek(S.inT); openCompose(); } else { S.inT = S.outT = null; drawSel(); seek(start); } } }
+    if (inLane) { if (moved && Math.abs(S.outT - S.inT) >= 0.1) { normaliseRange(); if (cutting) makeCut(); else { seek(S.inT); openCompose(); } }
+      else { S.inT = S.outT = null; S.cutSel = null; drawSel(); drawCuts(); seek(start); } } }
   $("tracks").addEventListener("pointermove", mv); $("tracks").addEventListener("pointerup", up);
 });
 $("tracks").addEventListener("wheel", function (e) { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom(S.zoom - e.deltaY * 0.4); }, { passive: false });
@@ -576,7 +602,8 @@ function clearRange() { S.inT = S.outT = null; drawSel(); drawMarkers(); }
 
 /* ---------------- notes */
 function loadNotes() { if (!S.cur) return Promise.resolve();
-  return api("/api/notes" + q()).then(function (j) { S.notes = j.notes; drawNotes(); drawMarkers();
+  return api("/api/notes" + q()).then(function (j) { S.notes = j.notes; S.cuts = (j.edits && j.edits.cuts) || []; S.exportSpeed = j.edits && j.edits.speed != null ? j.edits.speed : null;
+    S.appliedSpeed = (j.applied && j.applied.speed) || 1; S.editable = !!(j.applied && j.applied.editable); drawNotes(); drawMarkers(); drawCuts(); drawExport();
     var v = S.videos.find(function (x) { return x.v === S.cur; }); if (v) { v.open = S.notes.filter(function (n) { return n.status === "open"; }).length; v.total = S.notes.length; drawMedia(); } }); }
 function askText() { return "fix my review notes on " + S.cur; }
 function drawNotes() {
@@ -653,6 +680,57 @@ function remove(id) { return api("/api/notes" + q(), { method: "DELETE", body: {
 function setTabs() { $("tabOpen").classList.toggle("on", S.tab === "open"); $("tabFixed").classList.toggle("on", S.tab === "fixed"); }
 function copyAsk() { var t = askText(); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Copied. Paste it to Claude"); }, function () { toast(t); }); }
 
+/* ---------------- cuts, export speed, apply */
+function drawCuts() {
+  var lane = $("cutLane"); if (!lane) return; lane.querySelectorAll(".cutr").forEach(function (c) { c.remove(); });
+  document.querySelectorAll(".cutshade").forEach(function (c) { c.remove(); });
+  $("cutPh").style.display = S.cuts.length ? "none" : "";
+  S.cuts.forEach(function (c) {
+    var r = el("div", { className: "cutr" + (S.cutSel === c.id ? " on" : ""), title: short(c.t) + " → " + short(c.end) + " (" + (c.end - c.t).toFixed(1) + "s) will be cut" },
+      el("button", { className: "x", title: "Keep this part", html: GLYPH.x, onclick: function (e) { e.stopPropagation(); removeCut(c.id); } }));
+    r.style.left = (c.t * S.pps) + "px"; r.style.width = Math.max(6, (c.end - c.t) * S.pps) + "px";
+    r.onpointerdown = function (e) { e.stopPropagation(); };
+    r.onclick = function (e) { e.stopPropagation(); S.cutSel = c.id; var v = video(); if (v) v.pause(); seek(Math.max(0, c.t - 1.5)); drawCuts(); };
+    lane.append(r);
+    var sh = el("div", { className: "cutshade" }); sh.style.left = (c.t * S.pps) + "px"; sh.style.width = Math.max(1, (c.end - c.t) * S.pps) + "px"; $("inner").append(sh);
+  });
+  $("skipBtn").classList.toggle("on", S.skip); $("skipBtn").style.color = S.skip ? "var(--accent)" : "";
+  drawExport();
+}
+function makeCut() {
+  if (S.inT == null || S.outT == null || Math.abs(S.outT - S.inT) < 0.1) { toast("Mark a span first: drag across the cuts lane, or I and O"); return; }
+  var a = Math.min(S.inT, S.outT), b = Math.max(S.inT, S.outT);
+  api("/api/cuts" + q(), { method: "POST", body: { t: a, end: b } }).then(function (c) { S.inT = S.outT = null; drawSel(); S.cutSel = c.id; toast("Marked " + short(a) + " → " + short(b) + " to cut. Apply edits to render it."); return loadNotes(); })
+    .catch(function (e) { toast(e.message); });
+}
+function removeCut(id) { api("/api/cuts" + q(), { method: "DELETE", body: { id: id } }).then(function () { if (S.cutSel === id) S.cutSel = null; return loadNotes(); }).catch(function (e) { toast(e.message); }); }
+function cutTotal() { return S.cuts.reduce(function (s, c) { return s + (c.end - c.t); }, 0); }
+function targetSpeed() { return S.exportSpeed != null ? S.exportSpeed : S.appliedSpeed; }
+function newLength() { return Math.max(0, (dur() - cutTotal()) * S.appliedSpeed / targetSpeed()); }
+function drawExport() {
+  var sel = $("exportSel"), btn = $("applyBtn"); if (!S.cur || document.querySelector(".app").classList.contains("plan")) { sel.hidden = btn.hidden = true; return; }
+  sel.hidden = false; sel.replaceChildren();
+  EXPORTS.forEach(function (x) { sel.append(el("option", { value: String(x), textContent: "Export " + x + "×" + (x === S.appliedSpeed ? " (now)" : ""), selected: x === targetSpeed() })); });
+  var pending = S.cuts.length > 0 || (S.exportSpeed != null && S.exportSpeed !== S.appliedSpeed);
+  if (S.applying) { btn.hidden = false; btn.disabled = true; btn.className = "btn busy"; btn.replaceChildren(el("span", { className: "spin" }), el("span", { textContent: "Rendering… " + Math.floor((Date.now() - S.applying) / 1000) + "s" })); return; }
+  btn.disabled = false; btn.className = "btn accent"; btn.hidden = !pending;
+  btn.replaceChildren(el("span", { textContent: S.editable ? "Apply edits → " + short(newLength()) : "Edits ready → " + short(newLength()) }));
+  btn.title = S.editable ? "Re-render with your cuts and speed (keeps a backup of the spec)" : "This video can't be re-rendered from here yet: ask Claude to apply the edits";
+}
+function applyEdits() {
+  if (!S.editable) { toast("Ask Claude: apply my review edits on " + S.cur); return; }
+  var v = video(); if (v) v.pause(); var target = S.cur;
+  api("/api/apply" + q(), { method: "POST", body: {} }).then(function () { S.applying = Date.now(); drawExport(); poll(); }).catch(function (e) { toast(e.message); });
+  function poll() { api("/api/apply?v=" + encodeURIComponent(target)).then(function (j) {
+      if (j.state === "running") { drawExport(); setTimeout(poll, 1500); return; }
+      S.applying = null;
+      if (j.state === "done") { var r = j.result || {};
+        toast("Re-rendered" + (r.removed ? ", " + r.removed.toFixed(1) + "s cut" : "") + (r.speed ? ", at " + r.speed + "×" : "") + (r.qa ? ". " + r.qa : ""));
+        loadVideos().then(function () { if (S.cur === target) select(target); }); }
+      else { toast("Couldn't apply: " + (j.error || "the render failed")); drawExport(); }
+    }).catch(function () { setTimeout(poll, 3000); }); }
+}
+
 /* ---------------- planner */
 var P = { plans: [], planId: null, platform: "instagram", sel: null, adding: false, dragFrom: null, saveT: null };
 var GLYPH = {
@@ -666,7 +744,7 @@ var GLYPH = {
 function plan() { return P.plans.find(function (p) { return p.id === P.planId; }) || null; }
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plan"; }
 function vname(v) { return v.split("/").pop().replace(/\.mp4$/i, "").replace(/-(vertical|landscape|square)$/i, ""); }
-function posterUrl(it) { return "/api/poster?v=" + encodeURIComponent(it.v) + (it.cover != null ? "&t=" + it.cover : ""); }
+function posterUrl(it) { return "/api/poster?v=" + encodeURIComponent(it.v) + (it.cover != null ? "&t=" + it.cover : "") + ver(it.v); }
 function known(v) { return S.videos.some(function (x) { return x.v === v; }); }
 function loadPlans() { return api("/api/plans").then(function (j) { P.plans = j.plans;
   if (!P.plans.length) P.plans = [{ id: "plan", name: "My plan", handles: {}, items: [] }];
@@ -678,6 +756,7 @@ function setView(v) { var isPlan = v === "plan"; document.querySelector(".app").
   if (isPlan) { var vid = video(); if (vid) vid.pause(); drawPlanner(); $("file").replaceChildren(el("b", { textContent: (plan() || {}).name || "Planner" }), el("span", { textContent: "posting plan" })); }
   else if (S.cur) { var name = S.cur.split("/").pop(), p = prettyJob(S.cur.split("/").slice(0, -1).join("/")); $("file").replaceChildren(el("b", { textContent: name }), el("span", { textContent: (p.biz ? p.biz + " · " : "") + p.name })); }
   else $("file").replaceChildren(el("span", { textContent: "Pick a video to review" }));
+  drawExport();
   history.replaceState(null, "", isPlan ? "#planner&plan=" + encodeURIComponent(P.planId || "") : (S.cur ? "#v=" + encodeURIComponent(S.cur) : "#")); }
 function openInEditor(v) { setView("review"); select(v); }
 function drawPlanner() { var pl = plan(); if (!pl) return; drawPlanList(); drawAddList(); drawPhone(); drawSide(); $("pCount").textContent = pl.items.length ? "· " + pl.items.length : ""; }
@@ -803,6 +882,11 @@ function drawSide() {
 function confirmTwice(btn) { if (btn.dataset.armed) return true; btn.dataset.armed = "1"; var t = btn.textContent; btn.textContent = "Click again to delete"; setTimeout(function () { delete btn.dataset.armed; btn.textContent = t; }, 2500); return false; }
 
 /* ---------------- wiring */
+$("cutBtn").onclick = makeCut;
+$("skipBtn").onclick = function () { S.skip = !S.skip; drawCuts(); toast(S.skip ? "Playback skips the parts marked to cut" : "Playback shows everything"); };
+$("exportSel").onchange = function () { var x = Number($("exportSel").value);
+  api("/api/speed" + q(), { method: "PUT", body: { speed: x === S.appliedSpeed ? null : x } }).then(loadNotes).catch(function (e) { toast(e.message); }); };
+$("applyBtn").onclick = applyEdits;
 $("vReview").onclick = function () { setView("review"); };
 $("vPlan").onclick = function () { (P.plans.length ? Promise.resolve() : loadPlans()).then(function () { setView("plan"); }); };
 $("platforms").querySelectorAll("button").forEach(function (b) { b.onclick = function () { P.platform = b.dataset.p; $("platforms").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); }); drawPhone(); drawSide(); }; });
@@ -836,6 +920,8 @@ document.addEventListener("keydown", function (e) {
   else if (k === "n" || k === "N") { e.preventDefault(); openCompose(); }
   else if (k === "i" || k === "I") { e.preventDefault(); markIn(); }
   else if (k === "o" || k === "O") { e.preventDefault(); markOut(); }
+  else if (k === "x" || k === "X") { e.preventDefault(); makeCut(); }
+  else if ((k === "Delete" || k === "Backspace") && S.cutSel) { e.preventDefault(); removeCut(S.cutSel); }
   else if (k === "Escape") { if (S.pending) closeCompose(); else clearRange(); }
   else if (k === "ArrowLeft") { e.preventDefault(); seek(v.currentTime - (e.shiftKey ? 5 : 1)); }
   else if (k === "ArrowRight") { e.preventDefault(); seek(v.currentTime + (e.shiftKey ? 5 : 1)); }

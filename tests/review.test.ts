@@ -251,3 +251,84 @@ test("a cover can be taken from any moment, cached per moment", { skip: !hasFfmp
     server.close();
   }
 });
+
+test("cuts and the export speed are kept beside the video, next to the notes", async () => {
+  const { addCut, deleteCut, readEdits, setExportSpeed } = await import("../lib/review");
+  const { video } = fixture();
+  addNote(video, { t: 1, text: "keep me" });
+  const c = addCut(video, { t: 2, end: 3.5 });
+  assert.equal(c.end, 3.5);
+  assert.throws(() => addCut(video, { t: 3, end: 3.02 }), /longer/);
+  setExportSpeed(video, 1.5);
+  assert.deepEqual(readEdits(video), { cuts: [c], speed: 1.5 });
+  assert.equal(readNotes(video).length, 1, "notes survive edits");
+  addNote(video, { t: 2, text: "another" });
+  assert.equal(readEdits(video).cuts.length, 1, "edits survive notes");
+  assert.throws(() => setExportSpeed(video, 9), /0\.5 to 3/);
+  setExportSpeed(video, null);
+  deleteCut(video, c.id);
+  assert.deepEqual(readEdits(video), { cuts: [] });
+});
+
+test("planEdits: cuts on a sped-up render become source segments, and emptied cutaways are named", async () => {
+  const { planEdits } = await import("../lib/review");
+  const map = {
+    spec: "/x/spec.json",
+    speed: 2, // the render being watched plays at 2x
+    pieces: [
+      { source: "a", start: 10, end: 20, outStart: 0 },
+      { source: "a", start: 30, end: 40, outStart: 10 },
+    ],
+    cutaways: [{ start: 2, end: 4 }, { start: 12, end: 18 }],
+  };
+  // On the 2x video, 1-2 s and 6-7 s are 2-4 s and 12-14 s of the 1x edit.
+  const plan = planEdits(map, [{ t: 1, end: 2 }, { t: 6, end: 7 }]);
+  assert.deepEqual(plan.segments, [
+    { source: "a", start: 10, end: 12 },
+    { source: "a", start: 14, end: 20 },
+    { source: "a", start: 30, end: 32 },
+    { source: "a", start: 34, end: 40 },
+  ]);
+  assert.deepEqual(plan.dropCutaways, [0], "the first cutaway sat entirely inside a cut");
+  assert.equal(plan.removed, 4);
+});
+
+test("applying edits rewrites the spec (backed up), renders through the host, then clears the cuts", { skip: !hasFfmpeg && "needs ffmpeg" }, async () => {
+  const { addCut, readEdits, setExportSpeed } = await import("../lib/review");
+  const { root, video } = realVideo();
+  const specFile = path.join(root, "spec.json");
+  const spec = { title: "t", sources: { a: "/src.mp4" }, segments: [{ source: "a", start: 0, end: 3 }], formats: ["vertical"],
+    cutaways: [{ file: "/c.png", from: "x", to: "y" }, { file: "/d.png", from: "p", to: "q" }] };
+  fs.writeFileSync(specFile, JSON.stringify(spec));
+  fs.writeFileSync(path.join(root, "vertical.map.json"), JSON.stringify({ spec: specFile, speed: 1,
+    pieces: [{ source: "a", start: 0, end: 3, outStart: 0 }], cutaways: [{ start: 1, end: 1.5 }, { start: 2.5, end: 3 }] }));
+  addCut(video, { t: 1, end: 2 });
+  setExportSpeed(video, 1.5);
+  const rendered: string[] = [];
+  const server = serveReview({ root, port: 0, render: async (s) => { rendered.push(s); } });
+  await new Promise((r) => server.once("listening", r));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const st = await request(port, "POST", "/api/apply?v=clip-vertical.mp4", {});
+    assert.equal(st.status, 200);
+    let status = { state: "running" } as { state: string; error?: string };
+    for (let i = 0; i < 50 && status.state === "running"; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      status = JSON.parse((await request(port, "GET", "/api/apply?v=clip-vertical.mp4")).body);
+    }
+    assert.equal(status.state, "done", status.error);
+    assert.deepEqual(rendered, [specFile]);
+    const after = JSON.parse(fs.readFileSync(specFile, "utf8"));
+    assert.deepEqual(after.segments, [{ source: "a", start: 0, end: 1 }, { source: "a", start: 2, end: 3 }]);
+    assert.equal(after.speed, 1.5);
+    assert.deepEqual(after.cutaways.map((c: { file: string }) => c.file), ["/d.png"], "the cutaway inside the cut is gone");
+    assert.ok(fs.readdirSync(root).some((f) => /^spec\.before-edits-.*\.json$/.test(f)), "the old spec is kept");
+    assert.deepEqual(readEdits(video), { cuts: [] }, "cuts are baked in; the speed now lives in the spec");
+    const noHost = serveReview({ root, port: 0 });
+    await new Promise((r) => noHost.once("listening", r));
+    assert.equal((await request((noHost.address() as { port: number }).port, "POST", "/api/apply?v=clip-vertical.mp4", {})).status, 501);
+    noHost.close();
+  } finally {
+    server.close();
+  }
+});

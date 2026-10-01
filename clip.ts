@@ -8,19 +8,20 @@
 //   npm run review [-- <folder>] [--port 8794]               the review page: watch your cuts, press N where something looks wrong
 //   npm run clip -- notes <video|folder> [--all]              the review notes (open ones unless --all), with frame stills
 //   npm run clip -- notes-fixed <video> <note-id> "<what changed>"  mark a note fixed after re-rendering
+//   npm run clip -- apply-edits <video>                       apply the cuts and export speed marked on the review page
 //
 // Needs FFmpeg (with libass) and whisper.cpp's whisper-cli. Nothing is ever posted anywhere.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { DEFAULT_BRAND, mergeBrand, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
-import { formatNotes, listVideos, readNotes, serveReview, updateNote } from "./lib/review";
+import { applyEdits, formatNotes, listVideos, readEdits, readNotes, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
-import { buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "./lib/timeline";
+import { buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Piece, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
 /** whisper.cpp's CLI: $CLIPPER_WHISPER, else whisper-cli on the PATH (brew install whisper-cpp), else a HyperFrames build. */
@@ -60,8 +61,9 @@ function probe(file: string): Probe {
 // ---------------------------------------------------------------- transcribe
 
 /** Word-level transcript via whisper.cpp. Cached as <video>.words.json next to the video (or in --out). */
-function transcribe(video: string, model = "small.en", outDir?: string): Word[] {
-  const cache = path.join(outDir ?? path.dirname(video), `${path.basename(video)}.words.json`);
+// `tempo` < 1 slows the audio first (a sped-up render is heard at normal pace); times are then on that slower clock.
+function transcribe(video: string, model = "small.en", outDir?: string, tempo = 1): Word[] {
+  const cache = path.join(outDir ?? path.dirname(video), `${path.basename(video)}${tempo === 1 ? "" : `.x${tempo.toFixed(3)}`}.words.json`);
   if (fs.existsSync(cache) && fs.statSync(cache).mtimeMs > fs.statSync(video).mtimeMs) return JSON.parse(fs.readFileSync(cache, "utf8")) as Word[];
   const WHISPER = findWhisper() ?? die("whisper-cli not found: install whisper.cpp (brew install whisper-cpp) or set CLIPPER_WHISPER");
   const modelFile = MODEL_DIRS.map((d) => path.join(d, `ggml-${model}.bin`)).find((f) => fs.existsSync(f));
@@ -71,7 +73,7 @@ function transcribe(video: string, model = "small.en", outDir?: string): Word[] 
   // Lead in with 0.5 s of silence: whisper drops a first word that starts at 0.0 s,
   // and in a clip that first word is the hook. Offsets are shifted back below.
   const LEAD = 0.5;
-  run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-af", `adelay=${LEAD * 1000}:all=1`, "-c:a", "pcm_s16le", wav]);
+  run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-af", `${tempo === 1 ? "" : `atempo=${tempo},`}adelay=${LEAD * 1000}:all=1`, "-c:a", "pcm_s16le", wav]);
   // DTW token timestamps are far more accurate than segment offsets (0.1 s vs ~1 s of drift on
   // an 81 s test), but whisper.cpp silently skips DTW while flash attention is on: hence -nfa.
   run(WHISPER, ["-m", modelFile, "-f", wav, "-ml", "1", "-sow", "-ojf", "-dtw", model, "-nfa", "-of", path.join(tmp, "out"), "-np"]);
@@ -127,6 +129,11 @@ function loadBrand(jobDir: string): Brand {
   }
 }
 
+/** Where each stretch of a render came from: lets the review page turn "delete 0:40-0:44" into source cuts. */
+function writeMap(jobDir: string, fmt: Format, specFile: string, pieces: Piece[], windows: { start: number; end: number }[], speed: number) {
+  fs.writeFileSync(path.join(jobDir, `${fmt}.map.json`), JSON.stringify({ spec: path.resolve(specFile), speed, pieces, cutaways: windows }, null, 2) + "\n");
+}
+
 function renderFormat(
   spec: EditSpec,
   fmt: Format,
@@ -134,6 +141,7 @@ function renderFormat(
   words: Record<string, Word[]>,
   sil: Record<string, [number, number][]>,
   brand: Brand,
+  specFile: string,
 ): string {
   const dims = FORMATS[fmt];
   const pieces = keepPieces(spec, words, sil);
@@ -191,7 +199,10 @@ function renderFormat(
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
     cut,
   ]);
-  if (!wantText) return out;
+  if (!wantText) {
+    writeMap(jobDir, fmt, specFile, pieces, [], spec.speed ?? 1);
+    return out;
+  }
 
   // Pass 2: captions come from transcribing the cut itself, so they match exactly what's
   // heard. Mapping source timestamps across cuts dropped words that landed in a removed pause.
@@ -267,7 +278,17 @@ function renderFormat(
     run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", ...enc]);
   }
   fs.rmSync(cut, { force: true });
+  writeMap(jobDir, fmt, specFile, pieces, windows, spec.speed ?? 1);
   return out;
+}
+
+/** Plays the finished video `speed` times faster, voice at its own pitch (atempo), 30 fps kept. */
+function speedUp(file: string, speed: number) {
+  if (speed === 1) return;
+  const tmp = file.replace(/\.mp4$/, ".speed.mp4");
+  run("ffmpeg", ["-y", "-v", "error", "-i", file, "-filter_complex", `[0:v]setpts=PTS/${speed},fps=30[v];[0:a]atempo=${speed}[a]`, "-map", "[v]", "-map", "[a]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", tmp]);
+  fs.renameSync(tmp, file);
 }
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "video";
@@ -293,7 +314,8 @@ function cmdRender(specFile: string | undefined) {
   });
   const sil: Record<string, [number, number][]> = {};
   if (spec.tightenPauses) for (const [id, file] of Object.entries(spec.sources)) if (probe(file).hasAudio) sil[id] = silences(file);
-  const outs = spec.formats.map((fmt) => renderFormat(spec, fmt, jobDir, words, sil, brand));
+  const outs = spec.formats.map((fmt) => renderFormat(spec, fmt, jobDir, words, sil, brand, specFile));
+  for (const o of outs) speedUp(o, spec.speed ?? 1);
   for (const o of outs) console.log(`rendered ${o}`);
 }
 
@@ -332,9 +354,17 @@ function cmdCheck(video: string | undefined, hook?: string) {
   run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vf", `fps=1/${every.toFixed(3)},scale=360:-2,tile=3x3:padding=6:color=black`, "-frames:v", "1", sheet]);
   checks.push({ name: "contact sheet", ok: fs.existsSync(sheet), detail: sheet });
 
+  // A sped-up render is heard at its natural pace: slow it back down before transcribing.
+  const speed = (() => {
+    try {
+      return Number(JSON.parse(fs.readFileSync(path.join(path.dirname(video), "spec.json"), "utf8")).speed) || 1;
+    } catch {
+      return 1;
+    }
+  })();
   // The hook must actually be said or shown in the first seconds: re-read the opening.
-  const opening = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-qa-")))
-    .filter((w) => w.start < 4)
+  const opening = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-qa-")), 1 / speed)
+    .filter((w) => w.start < 4 * speed)
     .map((w) => w.w)
     .join(" ");
   checks.push({ name: "opening words", ok: opening.length > 0, detail: opening || "(nothing said in the first 4 s)" });
@@ -354,7 +384,7 @@ function cmdCheck(video: string | undefined, hook?: string) {
         .flatMap((g) => (src[g.source] ?? []).filter((w) => (w.start + w.end) / 2 >= g.start && (w.start + w.end) / 2 <= g.end))
         .map((w) => norm(w.w))
         .filter(Boolean);
-      const got = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-qa-"))).map((w) => norm(w.w)).filter(Boolean);
+      const got = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-qa-")), 1 / speed).map((w) => norm(w.w)).filter(Boolean);
       const score = expected.length ? lcs(expected, got) / expected.length : 1;
       const missing = expected.filter((w) => !got.includes(w));
       checks.push({
@@ -445,6 +475,41 @@ function cmdFromTeleprompter(folder: string | undefined, title: string | undefin
   console.log(JSON.stringify({ job, master, sections: sections.length, duration: Number(m.duration.toFixed(2)), size: `${m.w}x${m.h}`, warnings: takes.warnings }, null, 2));
 }
 
+// ---------------------------------------------------------------- the review page's "Apply edits"
+
+/** Renders a spec in a child process (the review server must keep answering meanwhile), then runs QA on each
+ *  output. Rejects only if the render fails; returns the QA verdicts as one line. */
+function renderInChild(specFile: string): Promise<string> {
+  const self = new URL(import.meta.url).pathname;
+  const tsx = path.join(path.dirname(self), "node_modules", "tsx", "dist", "cli.mjs");
+  const go = (args: string[]) =>
+    new Promise<{ code: number; out: string }>((resolve) => {
+      const child = spawn(process.execPath, [tsx, self, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+      let out = "";
+      child.stdout.on("data", (c) => (out += c));
+      child.stderr.on("data", (c) => (out += c));
+      child.on("close", (code) => resolve({ code: code ?? 1, out }));
+    });
+  return go(["render", specFile]).then(async (r) => {
+    if (r.code !== 0) throw new Error(r.out.trim().split("\n").find((l) => l.startsWith("clip:"))?.replace(/^clip: /, "") ?? r.out.trim().split("\n").at(-1) ?? "the render failed");
+    const outs = [...r.out.matchAll(/^rendered (.+)$/gm)].map((m) => m[1]);
+    const hook = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(specFile, "utf8")).hook?.text as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    const verdicts: string[] = [];
+    for (const o of outs) {
+      const c = await go(["check", o, ...(hook ? ["--hook", hook] : [])]);
+      const failed = c.out.split("\n").filter((l) => l.startsWith("✗")).map((l) => l.replace(/^✗\s+/, "").replace(/\s{2,}/g, ": "));
+      verdicts.push(failed.length ? `QA failed on ${path.basename(o)}: ${failed.join("; ")}` : `QA passed (${path.basename(o)})`);
+    }
+    return verdicts.join(" · ");
+  });
+}
+
 // ---------------------------------------------------------------- main
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -476,7 +541,7 @@ switch (cmd) {
     const root = path.resolve(pos[0] ?? process.env.CLIPPER_JOBS ?? path.join(process.cwd(), "jobs"));
     if (!fs.existsSync(root)) die(`no folder ${root}: make a job first (npm run clip -- new-job <title>), or pass a folder of videos`);
     const port = Number(opt("--port") ?? 8794);
-    serveReview({ root, port, title: "Clipper review" }).on("listening", () =>
+    serveReview({ root, port, title: "Clipper review", render: renderInChild }).on("listening", () =>
       console.log(`review page: http://127.0.0.1:${port}  (videos under ${root}; Ctrl-C to stop)`));
     break;
   }
@@ -488,6 +553,16 @@ switch (cmd) {
       if (!withNotes.length) console.log(`no ${all ? "" : "open "}review notes under ${target}`);
       for (const v of withNotes) console.log(formatNotes(path.join(target, v.v), readNotes(path.join(target, v.v)), all) + "\n");
     } else console.log(formatNotes(target, readNotes(target), all));
+    break;
+  }
+  case "apply-edits": {
+    const video = path.resolve(pos[0] ?? die("usage: apply-edits <video>"));
+    const e = readEdits(video);
+    console.log(`applying ${e.cuts.length} cut(s)${e.speed !== undefined ? `, export speed ${e.speed}x` : ""} to ${path.basename(video)} …`);
+    applyEdits(video, renderInChild).then(
+      (r) => console.log(`done: ${r.removed}s cut${r.speed ? `, now ${r.speed}x` : ""}${r.droppedCutaways.length ? `; dropped cutaways: ${r.droppedCutaways.join(", ")}` : ""}${r.qa ? `\n${r.qa}` : ""}`),
+      (err) => die(err instanceof Error ? err.message : String(err)),
+    );
     break;
   }
   case "notes-fixed": {

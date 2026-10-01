@@ -55,6 +55,8 @@ export type EditSpec = {
   music?: { file: string; volume?: number };
   /** Loudness target in LUFS; social platforms sit around -14. */
   loudness?: number;
+  /** Play the finished video faster (or slower): 1.5 posts at 1.5x. Voice keeps its pitch. Default 1. */
+  speed?: number;
 };
 
 export type SpecResult = { ok: true; spec: EditSpec } | { ok: false; errors: string[] };
@@ -81,6 +83,7 @@ export function validateSpec(raw: unknown): SpecResult {
   if (s.hook !== undefined && (typeof s.hook.text !== "string" || !s.hook.text.trim())) errors.push("hook.text: required when hook is set");
   if (s.music !== undefined && (typeof s.music.file !== "string" || !s.music.file.startsWith("/"))) errors.push("music.file: absolute path");
   if (s.faceY !== undefined && !(s.faceY >= 0 && s.faceY <= 1)) errors.push("faceY: 0..1");
+  if (s.speed !== undefined && !(typeof s.speed === "number" && s.speed >= 0.5 && s.speed <= 3)) errors.push("speed: a number from 0.5 to 3");
   if (s.cutaways !== undefined) {
     if (!Array.isArray(s.cutaways)) errors.push("cutaways: a list");
     else
