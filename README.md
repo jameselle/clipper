@@ -12,6 +12,7 @@ It runs on your own computer. The moments are picked by [Claude Code](https://cl
 - **A hook on screen.** Big outlined text for the first seconds, with the key words in your highlight colour.
 - **Screen footage over your voice.** Name the words and it puts a screenshot or screen recording on screen while you say them. Your face moves to the bottom half and the captions move to the seam between the two. Screenshots can pan smoothly across the page.
 - **Checks every clip:** vertical format, sound present, loudness at about −14 LUFS, no black frames, no dead air, no leftover rotation tag (the cause of sideways phone video), the opening words, and at least 90% of the words kept. It also makes a contact sheet so you can see the framing at a glance.
+- **A review page for your notes.** Watch a finished clip, press **N** wherever something looks wrong and type what you see. Each note keeps the moment, the caption on screen and a still of the frame, so Claude fixes exactly what you saw.
 - **Works with the free [teleprompter](https://github.com/jameselle/teleprompter).** One command joins your kept takes, section by section, into one video ready to clip.
 
 Nothing is ever posted. You get video files.
@@ -48,6 +49,29 @@ Recorded on the teleprompter? Point it at the script folder instead:
 ```
 clip my teleprompter takes in ~/Movies/Teleprompter/my-script
 ```
+
+## Review the clips, then let Claude fix them
+
+```sh
+npm run review          # http://127.0.0.1:8794, every video under jobs/
+```
+
+Pick a clip and watch it. When something looks off (a caption covering a graphic, a cut that lands mid-word, the wrong screenshot), press **N**. The video pauses, a still of that exact frame is grabbed, and you type what's wrong. **Enter** saves it.
+
+| Key | Does |
+|---|---|
+| **Space** | play / pause |
+| **N** | note at this moment |
+| **← →** | back / forward 1 s (**Shift** for 5 s) |
+| **, .** | one frame back / forward |
+
+Then tell Claude Code:
+
+```
+fix my review notes on jobs/<job>/<clip>-vertical.mp4
+```
+
+The `clip` skill reads every note and its frame, changes the spec, re-renders, re-checks, and marks each note fixed with what it changed. Fixed notes stay on the page (tick **show fixed**), and a note written on an earlier render is marked **earlier cut**. Notes are saved beside the video, as `<clip>.review.json` with the frame stills in `<clip>.review/`. The page only answers on 127.0.0.1 and only reads videos inside the folder you give it. `npm run review -- ~/some/folder` reviews any folder of videos.
 
 ## Use it by hand
 

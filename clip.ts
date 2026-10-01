@@ -5,6 +5,9 @@
 //   npm run clip -- check <video> [--hook "text"]             QA: format, loudness, black/silence, contact sheet, words kept
 //   npm run clip -- new-job <title>                           make a job folder under ./jobs and print its path
 //   npm run clip -- from-teleprompter <script-folder> [title] new job whose master.mp4 joins the teleprompter's kept takes
+//   npm run review [-- <folder>] [--port 8794]               the review page: watch your cuts, press N where something looks wrong
+//   npm run clip -- notes <video|folder> [--all]              the review notes (open ones unless --all), with frame stills
+//   npm run clip -- notes-fixed <video> <note-id> "<what changed>"  mark a note fixed after re-rendering
 //
 // Needs FFmpeg (with libass) and whisper.cpp's whisper-cli. Nothing is ever posted anywhere.
 
@@ -15,6 +18,7 @@ import path from "node:path";
 
 import { DEFAULT_BRAND, mergeBrand, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
+import { formatNotes, listVideos, readNotes, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
 import { buildAss, captionLines, cutawayWindows, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "./lib/timeline";
 
@@ -461,7 +465,32 @@ switch (cmd) {
   case "from-teleprompter":
     cmdFromTeleprompter(pos[0], pos.slice(1).join(" "));
     break;
+  case "review": {
+    const root = path.resolve(pos[0] ?? process.env.CLIPPER_JOBS ?? path.join(process.cwd(), "jobs"));
+    if (!fs.existsSync(root)) die(`no folder ${root}: make a job first (npm run clip -- new-job <title>), or pass a folder of videos`);
+    const port = Number(opt("--port") ?? 8794);
+    serveReview({ root, port, title: "Clipper review" }).on("listening", () =>
+      console.log(`review page: http://127.0.0.1:${port}  (videos under ${root}; Ctrl-C to stop)`));
+    break;
+  }
+  case "notes": {
+    const target = path.resolve(pos[0] ?? die("usage: notes <video|folder> [--all]"));
+    const all = args.includes("--all");
+    if (fs.statSync(target).isDirectory()) {
+      const withNotes = listVideos(target).filter((v) => (all ? v.total : v.open));
+      if (!withNotes.length) console.log(`no ${all ? "" : "open "}review notes under ${target}`);
+      for (const v of withNotes) console.log(formatNotes(path.join(target, v.v), readNotes(path.join(target, v.v)), all) + "\n");
+    } else console.log(formatNotes(target, readNotes(target), all));
+    break;
+  }
+  case "notes-fixed": {
+    const [video, id, ...fix] = pos;
+    if (!video || !id) die('usage: notes-fixed <video> <note-id> "<what changed>"');
+    const n = updateNote(path.resolve(video), id, { status: "fixed", fix: fix.join(" ") || undefined });
+    console.log(`fixed [${n.id}] ${n.text}`);
+    break;
+  }
   default:
-    console.log(fs.readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(0, 9).join("\n").replace(/^\/\/ ?/gm, ""));
+    console.log(fs.readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l, i, all) => all.slice(0, i + 1).every((x) => x.startsWith("//"))).join("\n").replace(/^\/\/ ?/gm, ""));
     if (cmd && cmd !== "help") process.exit(1);
 }

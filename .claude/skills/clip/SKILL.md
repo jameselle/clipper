@@ -131,6 +131,24 @@ Re-render and re-check. After 3 failed attempts on one clip, drop it and say why
 For each clip, give the user the file, the hook, its length, and a one-line reason it'll work.
 **Never post anything.** The user posts.
 
+## Review notes: fix what the user saw
+
+The user watches renders on the review page (`npm run review`, http://127.0.0.1:8794) and presses N wherever something looks wrong. When they
+say "fix my review notes on <video>":
+
+1. `npm run clip -- notes <video>` (or a job folder): each open note's id, time, text, the caption
+   on screen then, and the path of the frame still. **Read every frame** with the Read tool before changing
+   anything: the still is what they saw.
+2. Map each note to the spec: the caption line at that time says which words are on screen; a cutaway
+   covers `from`→`to` words; a cut sits between `segments`. Notes marked "earlier cut" were written on
+   an older render, so find the moment by its caption text, not its time.
+3. Fix the spec (cut points, cutaway files and anchors, hook, framing) and the cause, not just the
+   symptom: a misheard word is fixed in the job's `<source>.words.json`, which captions defer to.
+   If a note asks for something the footage can't give, say so instead of faking it.
+4. Re-render, `check`, and look at the contact sheet as usual.
+5. `npm run clip -- notes-fixed <video> <note-id> "<what changed>"` for each note you fixed. Leave a
+   note open when you didn't fix it, and tell the user why.
+
 ## Rules
 
 - Only add music the user has the rights to use. MusicGen's weights are non-commercial: never in monetised posts.

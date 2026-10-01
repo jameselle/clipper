@@ -8,6 +8,7 @@
   "engines": { "node": ">=20.11" },
   "scripts": {
     "clip": "tsx clip.ts",
+    "review": "tsx clip.ts review",
     "models": "sh scripts/models.sh",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
