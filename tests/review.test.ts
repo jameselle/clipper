@@ -202,3 +202,52 @@ test("the page serves meta, poster, filmstrip and waveform for a real video, and
     server.close();
   }
 });
+
+test("plans: saved and read back, with videos kept inside the folder and the platform limits enforced", async () => {
+  const { root } = fixture();
+  const { readPlans, savePlans, plansFile } = await import("../lib/review");
+  assert.deepEqual(readPlans(root), []);
+  const plan = {
+    id: "launch",
+    name: "Launch week",
+    handles: { instagram: "@acme", tiktok: "acme", youtube: "@acmeco" },
+    items: [
+      { v: "acme-co/studio/job-1/promo-vertical.mp4", pinned: true, date: "2026-10-02", cover: 1.5, title: "Day 1" },
+      { v: "acme-co/studio/job-1/master.mp4" },
+    ],
+  };
+  const saved = savePlans(root, [plan]);
+  assert.equal(saved[0].items.length, 2);
+  assert.equal(saved[0].handles.tiktok, "@acme", "handles get their @");
+  assert.deepEqual(readPlans(root), saved);
+  assert.ok(fs.existsSync(plansFile(root)));
+  assert.equal(listVideos(root).length, 2, "the plan file is not listed as a video");
+
+  const bad = (over: object, re: RegExp) => assert.throws(() => savePlans(root, [{ ...plan, ...over }]), re);
+  bad({ items: [{ v: "../../etc/x.mp4" }] }, /outside/);
+  bad({ items: [{ v: "a/notes.txt" }] }, /\.mp4/);
+  bad({ items: [1, 2, 3, 4].map((i) => ({ v: `v${i}.mp4`, pinned: true })) }, /3 pinned/);
+  bad({ items: [{ v: "a.mp4", date: "next tuesday" }] }, /date/);
+  bad({ items: [{ v: "a.mp4", cover: -1 }] }, /cover/);
+  bad({ id: "Has Spaces" }, /id/);
+  assert.throws(() => savePlans(root, [plan, plan]), /twice/);
+});
+
+test("a cover can be taken from any moment, cached per moment", { skip: !hasFfmpeg && "needs ffmpeg" }, async () => {
+  const { root } = realVideo();
+  const server = serveReview({ root, port: 0 });
+  await new Promise((r) => server.once("listening", r));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const a = await request(port, "GET", "/api/poster?v=clip-vertical.mp4&t=0.5");
+    const b = await request(port, "GET", "/api/poster?v=clip-vertical.mp4&t=2.5");
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    assert.notEqual(a.body, b.body, "different moments, different stills");
+    const put = await request(port, "PUT", "/api/plans", { plans: [{ id: "p", name: "P", handles: {}, items: [{ v: "clip-vertical.mp4", cover: 2.5 }] }] });
+    assert.equal(put.status, 200);
+    assert.equal(JSON.parse((await request(port, "GET", "/api/plans")).body).plans[0].items[0].cover, 2.5);
+  } finally {
+    server.close();
+  }
+});

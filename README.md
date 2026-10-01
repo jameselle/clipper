@@ -13,6 +13,7 @@ It runs on your own computer. The moments are picked by [Claude Code](https://cl
 - **Screen footage over your voice.** Name the words and it puts a screenshot or screen recording on screen while you say them. Your face moves to the bottom half and the captions move to the seam between the two. Screenshots can pan smoothly across the page.
 - **Checks every clip:** vertical format, sound present, loudness at about −14 LUFS, no black frames, no dead air, no leftover rotation tag (the cause of sideways phone video), the opening words, and at least 90% of the words kept. It also makes a contact sheet so you can see the framing at a glance.
 - **A review page for your notes.** An editor-style page with a media bin, player and timeline (filmstrip, waveform, zoom). Press **N** wherever something looks wrong, or drag across the timeline to note a few seconds at once, and type what you see. Each note keeps the moment or span, the captions on screen and stills of the frames, so Claude fixes exactly what you saw.
+- **A posting planner.** See how your Instagram, TikTok and YouTube Shorts profiles will look before you post: drag videos into order, pin up to three, pick each cover and see the grid's 3:4 crop on it, set dates, and jump into the editor from any tile.
 - **Works with the free [teleprompter](https://github.com/jameselle/teleprompter).** One command joins your kept takes, section by section, into one video ready to clip.
 
 Nothing is ever posted. You get video files.
@@ -77,6 +78,10 @@ fix my review notes on jobs/<job>/<clip>-vertical.mp4
 ```
 
 The `clip` skill reads every note and its frame, changes the spec, re-renders, re-checks, and marks each note fixed with what it changed. Fixed notes stay on the page (tick **show fixed**), and a note written on an earlier render is marked **earlier cut**. Notes are saved beside the video, as `<clip>.review.json` with the frame stills in `<clip>.review/`. The filmstrip, waveform and thumbnails are made by FFmpeg the first time a video is opened and cached in your temp folder. The page only answers on 127.0.0.1 and only reads videos inside the folder you give it. `npm run review -- ~/some/folder` reviews any folder of videos.
+
+### Plan the grid
+
+Switch the review page to **Planner**. Add your edited videos, drag them into posting order (first at the top goes out first), and the phone preview shows the profile once they're all up: newest first, pinned posts on top, each cover cropped the way that platform crops it. Instagram and TikTok cut a 9:16 video to 3:4 in the grid, so a hook title near the top can lose its first line: click a video, scrub to a better cover frame, and **Use this frame as the cover**. Double-click any video (or its **Edit** chip) to open it in the editor. Plans are saved as `.review-planner.json` in the folder you're reviewing.
 
 ## Use it by hand
 

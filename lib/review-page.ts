@@ -193,6 +193,100 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   .playhead::before { content:""; position:absolute; top:8px; bottom:0; left:-0.5px; width:1px; background:#fff; }
   .playhead::after { content:""; position:absolute; top:0; left:-6px; width:12px; height:14px; background:#fff; border-radius:3px 3px 6px 6px; clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
 
+  /* views */
+  .views { margin-left:14px; }
+  .app.plan .work, .app.plan .tl { display:none; }
+  .planner { display:none; grid-row:2 / 4; grid-template-columns:320px minmax(0,1fr) 340px; min-height:0; }
+  .app.plan .planner { display:grid; }
+  .saved { font-size:11.5px; color:var(--text3); }
+  select.field { height:30px; padding:0 28px 0 10px; -webkit-appearance:none; appearance:none; background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%238a8a94%22 stroke-width=%222%22%3E%3Cpath d=%22m6 9 6 6 6-6%22/%3E%3C/svg%3E") no-repeat right 8px center/14px; color:var(--text); border:1px solid var(--line); border-radius:8px; font:inherit; outline:none; }
+  input.plain { width:100%; height:30px; padding:0 10px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; font:inherit; outline:none; user-select:text; }
+  input.plain:focus { border-color:var(--accent-line); }
+  input[type=date].plain { color-scheme:dark; }
+  .prow { display:flex; align-items:center; gap:10px; padding:7px 8px; margin:0 10px 6px; border-radius:10px; background:var(--panel2); border:1px solid transparent; cursor:pointer; transition:border-color .12s, background .12s; }
+  .prow:hover { background:#202025; }
+  .prow.on { border-color:var(--accent-line); }
+  .prow.over { box-shadow:inset 0 2px 0 var(--accent); }
+  .prow.dragging { opacity:.4; }
+  .prow .grip { color:var(--text3); cursor:grab; display:grid; place-items:center; }
+  .prow .grip svg { width:14px; height:14px; }
+  .prow .ord { font:600 11px var(--mono); color:var(--text3); width:18px; text-align:right; }
+  .prow img { width:32px; aspect-ratio:9/16; border-radius:5px; object-fit:cover; background:#000; flex:none; }
+  .prow .pm { flex:1; min-width:0; }
+  .prow .pn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12.5px; }
+  .prow .ps { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .prow .missing { color:var(--danger); }
+  .addlist { margin:4px 10px 10px; padding:8px; border-radius:11px; background:var(--bg); border:1px dashed var(--line2); display:none; }
+  .addlist.on { display:block; }
+  .arow { display:flex; align-items:center; gap:9px; padding:5px 6px; border-radius:8px; }
+  .arow:hover { background:var(--panel2); }
+  .arow img { width:26px; aspect-ratio:9/16; border-radius:4px; object-fit:cover; background:#000; }
+  .arow .pn { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; color:var(--text2); }
+  .pcenter { background:var(--bg); display:flex; flex-direction:column; align-items:center; min-width:0; min-height:0; padding:14px 20px 18px; gap:14px; }
+  .phone { width:390px; max-width:100%; flex:1; min-height:0; max-height:844px; border-radius:46px; background:#000; padding:11px; box-shadow:0 0 0 1px #2f2f36, 0 30px 80px -30px rgba(0,0,0,.9); display:flex; }
+  .screen { flex:1; border-radius:36px; overflow-y:auto; overflow-x:hidden; background:#000; color:#f5f5f5; position:relative; }
+  .screen::-webkit-scrollbar { width:0; }
+  .notch { height:34px; display:flex; justify-content:space-between; align-items:center; padding:0 26px; font:600 13px -apple-system,system-ui; }
+  .notch .island { width:96px; height:26px; background:#000; border-radius:20px; box-shadow:0 0 0 1px #111; }
+  .pf-head { padding:4px 14px 10px; }
+  .pf-top { display:flex; align-items:center; gap:18px; }
+  .avatar { border-radius:50%; background:linear-gradient(135deg,#1fd1c1,#2a8cff 60%,#8b5cf6); flex:none; display:grid; place-items:center; color:#05221f; font-weight:800; }
+  .ig-ring { padding:3px; border-radius:50%; background:conic-gradient(#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75); }
+  .ig-ring .avatar { box-shadow:0 0 0 3px #000; }
+  .stats { flex:1; display:flex; justify-content:space-around; text-align:center; }
+  .stats b { display:block; font-size:16px; } .stats span { font-size:12.5px; color:#d5d5d5; }
+  .pf-name { font-weight:600; font-size:13.5px; margin-top:10px; }
+  .bioline { height:9px; border-radius:5px; background:#1e1e1e; margin-top:7px; }
+  .pf-btns { display:flex; gap:6px; margin-top:12px; }
+  .pf-btns div { flex:1; height:32px; border-radius:8px; background:#262626; display:grid; place-items:center; font-weight:600; font-size:13px; }
+  .pf-tabs { display:flex; border-top:1px solid #1f1f1f; }
+  .pf-tabs div { flex:1; height:44px; display:grid; place-items:center; color:#8e8e8e; border-bottom:1px solid transparent; font-weight:600; font-size:13.5px; }
+  .pf-tabs div.on { color:#fff; border-bottom-color:#fff; }
+  .pf-tabs svg { width:22px; height:22px; }
+  .pgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; }
+  .tt .pgrid { gap:1px; }
+  .yt .pgrid { gap:4px; padding:0 4px; }
+  .tile { position:relative; aspect-ratio:3/4; background:#111; overflow:hidden; cursor:pointer; }
+  .yt .tile { aspect-ratio:9/16; border-radius:8px; }
+  .tile img { width:100%; height:100%; object-fit:cover; display:block; }
+  .tile .ov { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between; padding:6px; pointer-events:none; }
+  .tile .ov .r { display:flex; justify-content:space-between; align-items:center; font:600 11.5px -apple-system,system-ui; text-shadow:0 1px 3px rgba(0,0,0,.8); }
+  .tile .ov svg { width:15px; height:15px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
+  .tile .pinned-tt { background:#fe2c55; color:#fff; border-radius:3px; padding:1px 5px; font-size:10.5px; text-shadow:none; }
+  .tile .hov { position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,0) 55%,rgba(0,0,0,.6)); opacity:0; transition:opacity .12s; pointer-events:none; }
+  .tile:hover .hov, .tile.on .hov { opacity:1; }
+  .tile .hov .ordtag { position:absolute; left:6px; bottom:6px; font:600 10.5px var(--mono); color:#fff; }
+  .tile .hov .edit { position:absolute; right:5px; bottom:5px; height:22px; padding:0 8px; border-radius:6px; background:var(--accent); color:var(--ink); font-weight:600; font-size:11px; pointer-events:auto; }
+  .tile .hov .edit:hover { background:var(--accent-hi); }
+  .tile:hover .ov .r:last-child, .tile.on .ov .r:last-child { opacity:0; }
+  .tile.on { outline:2px solid var(--accent); outline-offset:-2px; z-index:1; }
+  .tile.missing img { opacity:.25; }
+  .tile.ghost { cursor:default; background:repeating-linear-gradient(135deg,#0d0d0d 0 8px,#111 8px 16px); }
+  .yt-banner { height:84px; margin:0 12px; border-radius:12px; background:linear-gradient(120deg,#0d3b38,#123a66 60%,#2b1d52); }
+  .yt-chan { display:flex; gap:14px; align-items:center; padding:12px 14px 6px; }
+  .yt-chan b { font-size:18px; display:block; } .yt-chan span { font-size:12px; color:#aaa; }
+  .yt-sub { margin:8px 14px 10px; height:36px; border-radius:18px; background:#f1f1f1; color:#0f0f0f; display:grid; place-items:center; font-weight:600; font-size:13.5px; }
+  .tt-head { text-align:center; padding:6px 14px 12px; }
+  .tt-head .avatar { margin:0 auto 8px; }
+  .tt-stats { display:flex; justify-content:center; gap:22px; margin:10px 0 12px; }
+  .tt-stats b { display:block; font-size:16px; } .tt-stats span { font-size:12px; color:#aaa; }
+  .tt-btn { display:inline-grid; place-items:center; height:36px; padding:0 22px; border-radius:6px; background:#2f2f2f; font-weight:600; font-size:13.5px; }
+  .pempty { padding:40px 24px; text-align:center; color:#777; font-size:12.5px; line-height:1.6; }
+  .cover { position:relative; margin:0 12px; border-radius:12px; overflow:hidden; background:#000; aspect-ratio:9/16; max-height:340px; align-self:center; }
+  .cover video { width:100%; height:100%; object-fit:contain; display:block; }
+  .crop { position:absolute; left:0; right:0; border:1.5px solid var(--accent); box-shadow:0 0 0 999px rgba(0,0,0,.55); pointer-events:none; border-radius:2px; }
+  .crop span { position:absolute; bottom:6px; left:6px; font:600 10.5px var(--mono); color:var(--ink); background:var(--accent); padding:1px 5px; border-radius:4px; }
+  .fieldrow { margin:10px 12px 0; display:flex; flex-direction:column; gap:5px; }
+  .fieldrow label { font-size:11.5px; color:var(--text2); font-weight:600; }
+  .toggle2 { display:flex; align-items:center; justify-content:space-between; margin:12px 12px 0; padding:9px 10px; border-radius:9px; background:var(--panel2); font-size:12.5px; }
+  .sw { width:34px; height:20px; border-radius:10px; background:var(--line2); position:relative; transition:background .15s; flex:none; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .sw.on { background:var(--accent); } .sw.on::after { transform:translateX(14px); }
+  .dacts { display:flex; gap:8px; margin:14px 12px 14px; }
+  .dacts .btn { flex:1; justify-content:center; }
+  .btn.dangerous:hover { color:var(--danger); }
+  .tip2 { margin:12px; padding:10px 12px; border-radius:10px; background:var(--panel2); color:var(--text2); font-size:12px; line-height:1.55; }
+
   .toast { position:fixed; left:50%; bottom:252px; transform:translateX(-50%) translateY(8px); background:#2a2a30; border:1px solid var(--line2); color:var(--text); padding:8px 14px; border-radius:10px; font-size:12.5px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; z-index:30; box-shadow:0 10px 30px -10px rgba(0,0,0,.7); }
   .toast.on { opacity:1; transform:translateX(-50%); }
   @media (max-width:1180px) { .work { grid-template-columns:230px minmax(0,1fr) 300px; } .brand, .topright { min-width:0; } }
@@ -201,9 +295,11 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand"><div class="mark"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></div>{{TITLE}}</div>
+    <div class="brand"><div class="mark"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></div>{{TITLE}}
+      <div class="seg views"><button class="on" id="vReview">Review</button><button id="vPlan">Planner</button></div></div>
     <div class="file" id="file"><span>Pick a video to review</span></div>
     <div class="topright">
+      <span class="saved" id="savedLbl"></span>
       <span class="chip accent" id="openChip" hidden><span class="dot"></span><span id="openCount"></span></span>
       <button class="btn" id="copyAsk" hidden><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>Copy request for Claude</button>
     </div>
@@ -285,6 +381,22 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
         <div class="playhead" id="playhead"></div>
       </div></div>
     </div>
+  </section>
+
+  <section class="planner" id="planner">
+    <div class="panel" style="border-right:1px solid var(--line)">
+      <div class="phead"><h2>Posting order <span class="muted" id="pCount"></span></h2>
+        <button class="btn ghost" id="pAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add videos</button></div>
+      <div style="padding:0 12px 10px"><select class="field" id="pSelect" style="width:100%"></select></div>
+      <div class="addlist" id="pAddList"></div>
+      <div class="scroll" id="pList"></div>
+      <div class="tip2">First at the top is posted first. The previews show the profile once every video here is up: newest first, pinned posts on top.</div>
+    </div>
+    <div class="pcenter">
+      <div class="seg" id="platforms"><button class="on" data-p="instagram">Instagram</button><button data-p="tiktok">TikTok</button><button data-p="youtube">YouTube Shorts</button></div>
+      <div class="phone"><div class="screen" id="screen"></div></div>
+    </div>
+    <div class="panel" style="border-left:1px solid var(--line)" id="pSide"></div>
   </section>
 </div>
 <div class="tip" id="tip"></div>
@@ -407,10 +519,10 @@ function drawRuler(w) {
   var steps = [1 / S.fps * 5, 0.5, 1, 2, 5, 10, 15, 30, 60, 120], major = steps.find(function (s) { return s * S.pps >= 72; }) || 300;
   var minor = major / 5, d = dur(); if (!d) return;
   g.font = "10px " + getComputedStyle(document.body).getPropertyValue("--mono"); g.textBaseline = "top";
-  for (var t = 0; t <= d + 1e-6; t += minor) {
-    var x = Math.round(t * S.pps) + 0.5, isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
+  for (var i = 0; i * minor <= d + 1e-6; i++) {
+    var t = i * minor, x = Math.round(t * S.pps) + 0.5, isMajor = i % 5 === 0;
     g.strokeStyle = isMajor ? "#55555e" : "#34343b"; g.beginPath(); g.moveTo(x, isMajor ? 14 : 19); g.lineTo(x, h); g.stroke();
-    if (isMajor) { g.fillStyle = "#7a7a84"; var s = Math.floor(t), lab = pad(Math.floor(s / 60)) + ":" + pad(s % 60); if (major < 1) lab += ":" + pad(Math.round((t % 1) * S.fps)); g.fillText(lab, x + 4, 4); }
+    if (isMajor) { g.fillStyle = "#7a7a84"; var s = Math.floor(t + 1e-6), lab = pad(Math.floor(s / 60)) + ":" + pad(s % 60); if (major < 1) lab += ":" + pad(Math.round((t - s) * S.fps)); g.fillText(lab, x + 4, 4); }
   }
 }
 function drawTiles() {
@@ -541,7 +653,165 @@ function remove(id) { return api("/api/notes" + q(), { method: "DELETE", body: {
 function setTabs() { $("tabOpen").classList.toggle("on", S.tab === "open"); $("tabFixed").classList.toggle("on", S.tab === "fixed"); }
 function copyAsk() { var t = askText(); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Copied. Paste it to Claude"); }, function () { toast(t); }); }
 
+/* ---------------- planner */
+var P = { plans: [], planId: null, platform: "instagram", sel: null, adding: false, dragFrom: null, saveT: null };
+var GLYPH = {
+  grip: '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></svg>',
+  reel: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M3 8h18M8 3l3 5M14 3l3 5M10.5 11.5v5l4.5-2.5z"/></svg>',
+  grid: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+};
+function plan() { return P.plans.find(function (p) { return p.id === P.planId; }) || null; }
+function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plan"; }
+function vname(v) { return v.split("/").pop().replace(/\.mp4$/i, "").replace(/-(vertical|landscape|square)$/i, ""); }
+function posterUrl(it) { return "/api/poster?v=" + encodeURIComponent(it.v) + (it.cover != null ? "&t=" + it.cover : ""); }
+function known(v) { return S.videos.some(function (x) { return x.v === v; }); }
+function loadPlans() { return api("/api/plans").then(function (j) { P.plans = j.plans;
+  if (!P.plans.length) P.plans = [{ id: "plan", name: "My plan", handles: {}, items: [] }];
+  var want = (location.hash.match(/plan=([^&]+)/) || [])[1]; P.planId = (want && P.plans.some(function (p) { return p.id === want; })) ? want : P.plans[0].id; }); }
+function savePlans() { clearTimeout(P.saveT); $("savedLbl").textContent = "Saving…";
+  P.saveT = setTimeout(function () { api("/api/plans", { method: "PUT", body: { plans: P.plans } }).then(function (j) { P.plans = j.plans; $("savedLbl").textContent = "Saved"; setTimeout(function () { $("savedLbl").textContent = ""; }, 1500); })
+    .catch(function (e) { $("savedLbl").textContent = ""; toast("Couldn't save the plan: " + e.message); }); }, 350); }
+function setView(v) { var isPlan = v === "plan"; document.querySelector(".app").classList.toggle("plan", isPlan); $("vReview").classList.toggle("on", !isPlan); $("vPlan").classList.toggle("on", isPlan);
+  if (isPlan) { var vid = video(); if (vid) vid.pause(); drawPlanner(); $("file").replaceChildren(el("b", { textContent: (plan() || {}).name || "Planner" }), el("span", { textContent: "posting plan" })); }
+  else if (S.cur) { var name = S.cur.split("/").pop(), p = prettyJob(S.cur.split("/").slice(0, -1).join("/")); $("file").replaceChildren(el("b", { textContent: name }), el("span", { textContent: (p.biz ? p.biz + " · " : "") + p.name })); }
+  else $("file").replaceChildren(el("span", { textContent: "Pick a video to review" }));
+  history.replaceState(null, "", isPlan ? "#planner&plan=" + encodeURIComponent(P.planId || "") : (S.cur ? "#v=" + encodeURIComponent(S.cur) : "#")); }
+function openInEditor(v) { setView("review"); select(v); }
+function drawPlanner() { var pl = plan(); if (!pl) return; drawPlanList(); drawAddList(); drawPhone(); drawSide(); $("pCount").textContent = pl.items.length ? "· " + pl.items.length : ""; }
+function drawPlanList() {
+  var pl = plan(), sel = $("pSelect"); sel.replaceChildren();
+  P.plans.forEach(function (p) { sel.append(el("option", { value: p.id, textContent: p.name, selected: p.id === P.planId })); });
+  sel.append(el("option", { value: "__new", textContent: "+ New plan…" }));
+  var box = $("pList"); box.replaceChildren();
+  pl.items.forEach(function (it, i) {
+    var row = el("div", { className: "prow" + (P.sel === i ? " on" : ""), draggable: true },
+      el("span", { className: "grip", html: GLYPH.grip }), el("span", { className: "ord", textContent: String(i + 1) }), el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
+      el("div", { className: "pm" }, el("div", { className: "pn", textContent: it.title || vname(it.v) }),
+        el("div", { className: "ps" + (known(it.v) ? "" : " missing"), textContent: known(it.v) ? (it.date ? new Date(it.date + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "No date") + (it.pinned ? " · pinned" : "") : "Video not found" })),
+      el("button", { className: "icon" + (it.pinned ? " on" : ""), title: it.pinned ? "Unpin" : "Pin to the top (Instagram, TikTok)", html: GLYPH.pin, onclick: function (e) { e.stopPropagation(); togglePin(i); } }));
+    row.onclick = function () { P.sel = i; drawPlanner(); };
+    row.ondblclick = function () { openInEditor(it.v); };
+    row.ondragstart = function (e) { P.dragFrom = i; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; };
+    row.ondragend = function () { row.classList.remove("dragging"); document.querySelectorAll(".prow.over").forEach(function (r) { r.classList.remove("over"); }); };
+    row.ondragover = function (e) { e.preventDefault(); row.classList.add("over"); };
+    row.ondragleave = function () { row.classList.remove("over"); };
+    row.ondrop = function (e) { e.preventDefault(); var from = P.dragFrom; if (from == null || from === i) return; var moved = pl.items.splice(from, 1)[0]; pl.items.splice(i, 0, moved);
+      P.sel = i; P.dragFrom = null; savePlans(); drawPlanner(); };
+    box.append(row);
+  });
+  if (!pl.items.length) box.append(el("div", { className: "empty", style: "padding:30px 20px", textContent: "No videos in this plan yet. Use Add videos." }));
+}
+function drawAddList() {
+  var pl = plan(), box = $("pAddList"); box.classList.toggle("on", P.adding); box.replaceChildren(); if (!P.adding) return;
+  var inPlan = {}; pl.items.forEach(function (it) { inPlan[it.v] = true; });
+  var list = S.videos.filter(function (v) { return RENDER.test(v.name) && !inPlan[v.v]; });
+  list.forEach(function (v) { box.append(el("div", { className: "arow" }, el("img", { src: "/api/poster?v=" + encodeURIComponent(v.v), alt: "", loading: "lazy" }),
+    el("span", { className: "pn", title: v.v, textContent: vname(v.v) + " · " + prettyJob(v.folder).name }),
+    el("button", { className: "icon", title: "Add to the end", html: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>', onclick: function () { pl.items.push({ v: v.v }); savePlans(); drawPlanner(); } }))); });
+  if (!list.length) box.append(el("div", { className: "muted", style: "padding:8px;font-size:12px", textContent: "Every edited video is already in this plan." }));
+}
+function togglePin(i) { var pl = plan(), it = pl.items[i]; if (!it.pinned && pl.items.filter(function (x) { return x.pinned; }).length >= 3) { toast("Instagram and TikTok allow 3 pinned posts"); return; }
+  it.pinned = !it.pinned; if (!it.pinned) delete it.pinned; savePlans(); drawPlanner(); }
+function gridOrder(pl, pins) { var idx = pl.items.map(function (_, i) { return i; }).reverse();
+  if (!pins) return idx; return idx.filter(function (i) { return pl.items[i].pinned; }).concat(idx.filter(function (i) { return !pl.items[i].pinned; })); }
+function tileFor(pl, i, kind) {
+  var it = pl.items[i], top = el("div", { className: "r" }), bottom = el("div", { className: "r" });
+  if (kind === "instagram") { top.append(el("span"), it.pinned ? el("span", { html: GLYPH.pin }) : el("span", { html: GLYPH.reel })); bottom.append(el("span", { html: GLYPH.play }), el("span")); }
+  if (kind === "tiktok") { top.append(it.pinned ? el("span", { className: "pinned-tt", textContent: "Pinned" }) : el("span"), el("span")); bottom.append(el("span", { style: "display:flex;align-items:center;gap:3px", html: GLYPH.play + "0" }), el("span")); }
+  if (kind === "youtube") { bottom.append(el("span", { textContent: "0 views" }), el("span")); }
+  var t = el("div", { className: "tile" + (P.sel === i ? " on" : "") + (known(it.v) ? "" : " missing") }, el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
+    el("div", { className: "ov" }, top, bottom),
+    el("div", { className: "hov" }, el("span", { className: "ordtag", textContent: "#" + (i + 1) + (it.date ? " · " + it.date.slice(5) : "") }),
+      el("button", { className: "edit", textContent: "Edit", title: "Open in the editor", onclick: function (e) { e.stopPropagation(); openInEditor(it.v); } })));
+  t.onclick = function () { P.sel = i; drawPlanner(); };
+  t.ondblclick = function () { openInEditor(it.v); };
+  return t;
+}
+function drawPhone() {
+  var pl = plan(), sc = $("screen"), kind = P.platform, h = pl.handles || {}, n = pl.items.length; sc.replaceChildren();
+  sc.className = "screen " + (kind === "tiktok" ? "tt" : kind === "youtube" ? "yt" : "ig");
+  sc.append(el("div", { className: "notch" }, el("span", { textContent: "9:41" }), el("span", { className: "island" }), el("span", { textContent: "●●●" })));
+  var handle = (h[kind] || "@yourhandle").replace(/^@/, ""), initial = handle.charAt(0).toUpperCase(), grid = el("div", { className: "pgrid" });
+  gridOrder(pl, kind !== "youtube").forEach(function (i) { grid.append(tileFor(pl, i, kind)); });
+  var fill = (3 - (n % 3)) % 3 + (n < 6 ? 3 : 0); for (var k = 0; k < fill; k++) grid.append(el("div", { className: "tile ghost" }));
+  if (kind === "instagram") {
+    sc.append(el("div", { className: "pf-head" },
+      el("div", { style: "font-weight:700;font-size:17px;margin:2px 0 12px", textContent: handle }),
+      el("div", { className: "pf-top" }, el("div", { className: "ig-ring" }, el("div", { className: "avatar", style: "width:78px;height:78px;font-size:28px", textContent: initial })),
+        el("div", { className: "stats" }, el("div", {}, el("b", { textContent: String(n) }), el("span", { textContent: "posts" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "following" })))),
+      el("div", { className: "pf-name", textContent: pl.name }), el("div", { className: "bioline", style: "width:82%" }), el("div", { className: "bioline", style: "width:58%" }),
+      el("div", { className: "pf-btns" }, el("div", { textContent: "Edit profile" }), el("div", { textContent: "Share profile" }))),
+      el("div", { className: "pf-tabs" }, el("div", { className: "on", html: GLYPH.grid }), el("div", { html: GLYPH.reel }), el("div", { html: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>' })), grid);
+  } else if (kind === "tiktok") {
+    sc.append(el("div", { className: "tt-head" }, el("div", { className: "avatar", style: "width:92px;height:92px;font-size:32px", textContent: initial }),
+      el("div", { style: "font-weight:700;font-size:16px", textContent: "@" + handle }),
+      el("div", { className: "tt-stats" }, el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Following" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Likes" }))),
+      el("span", { className: "tt-btn", textContent: "Edit profile" })),
+      el("div", { className: "pf-tabs" }, el("div", { className: "on", html: GLYPH.grid }), el("div", { html: GLYPH.pin })), grid);
+  } else {
+    sc.append(el("div", { className: "yt-banner" }), el("div", { className: "yt-chan" }, el("div", { className: "avatar", style: "width:68px;height:68px;font-size:26px", textContent: initial }),
+      el("div", {}, el("b", { textContent: pl.name }), el("span", { textContent: "@" + handle + " · — subscribers · " + n + " videos" }))),
+      el("div", { className: "yt-sub", textContent: "Subscribe" }),
+      el("div", { className: "pf-tabs" }, el("div", { textContent: "Home" }), el("div", { textContent: "Videos" }), el("div", { className: "on", textContent: "Shorts" })), el("div", { style: "height:8px" }), grid);
+  }
+  if (!n) sc.append(el("div", { className: "pempty", textContent: "Add videos on the left to see how the profile will look." }));
+}
+function drawSide() {
+  var pl = plan(), box = $("pSide"); box.replaceChildren();
+  var it = P.sel != null ? pl.items[P.sel] : null;
+  if (!it) {
+    var h = pl.handles || (pl.handles = {});
+    var field = function (label, val, set, ph) { var i = el("input", { className: "plain", value: val || "", placeholder: ph || "" }); i.oninput = function () { set(i.value); savePlans(); if (label === "Plan name") { drawPlanList(); } drawPhone(); };
+      return el("div", { className: "fieldrow" }, el("label", { textContent: label }), i); };
+    box.append(el("div", { className: "phead" }, el("h2", { textContent: "Profile" })),
+      field("Plan name", pl.name, function (v) { pl.name = v; }),
+      field("Instagram handle", h.instagram, function (v) { h.instagram = v; }, "@yourhandle"),
+      field("TikTok handle", h.tiktok, function (v) { h.tiktok = v; }, "@yourhandle"),
+      field("YouTube handle", h.youtube, function (v) { h.youtube = v; }, "@yourchannel"),
+      el("div", { className: "tip2", textContent: "Click a video in the list or the preview to set its cover, title, date and pin. Double-click it, or press its Edit chip, to open it in the editor." }),
+      P.plans.length > 1 ? el("div", { className: "dacts" }, el("button", { className: "btn ghost dangerous", textContent: "Delete this plan", onclick: function () { if (!confirmTwice(this)) return; P.plans = P.plans.filter(function (p) { return p.id !== pl.id; }); P.planId = P.plans[0].id; P.sel = null; savePlans(); drawPlanner(); } })) : "");
+    return;
+  }
+  var i = P.sel, dv = el("video", { src: "/api/video?v=" + encodeURIComponent(it.v), muted: true, preload: "auto", playsInline: true });
+  var crop = el("div", { className: "crop" }, el("span", { textContent: P.platform === "youtube" ? "9:16" : "3:4 grid crop" }));
+  var cover = el("div", { className: "cover" }, dv, P.platform === "youtube" ? null : crop);
+  var slider = el("input", { type: "range", min: "0", max: "1", step: "0.1", value: String(it.cover || 0), style: "width:100%" });
+  var tlabel = el("span", { className: "mono", textContent: short(it.cover || 0) });
+  dv.addEventListener("loadedmetadata", function () { slider.max = String(Math.max(0.1, dv.duration - 0.05)); var start = it.cover != null ? it.cover : Math.round(Math.min(1, dv.duration / 3) * 10) / 10;
+    dv.currentTime = start; slider.value = String(start); tlabel.textContent = short(start);
+    // where the 3:4 crop sits on this video's frame
+    var r = dv.videoWidth / dv.videoHeight, boxR = 9 / 16, contentH = r >= boxR ? (boxR / r) : 1, cropH = Math.min(1, (dv.videoWidth * 4 / 3) / dv.videoHeight) * contentH;
+    crop.style.top = ((1 - cropH) / 2 * 100) + "%"; crop.style.height = (cropH * 100) + "%"; });
+  slider.oninput = function () { dv.currentTime = Number(slider.value); tlabel.textContent = short(Number(slider.value)); };
+  var input = function (label, type, val, set, ph) { var x = el("input", { className: "plain", type: type, value: val || "", placeholder: ph || "" }); x.onchange = x.oninput = function () { set(x.value); savePlans(); drawPlanList(); drawPhone(); };
+    return el("div", { className: "fieldrow" }, el("label", { textContent: label }), x); };
+  var sw = el("div", { className: "sw" + (it.pinned ? " on" : "") });
+  box.append(el("div", { className: "phead" }, el("h2", { textContent: "#" + (i + 1) + "  " + (it.title || vname(it.v)) }), el("button", { className: "icon", title: "Close", html: GLYPH.x, onclick: function () { P.sel = null; drawPlanner(); } })),
+    el("div", { className: "scroll" },
+      el("div", { style: "display:flex;flex-direction:column" }, cover),
+      el("div", { className: "fieldrow" }, el("label", { style: "display:flex;justify-content:space-between" }, el("span", { textContent: "Cover frame" }), tlabel), slider,
+        el("button", { className: "btn", style: "justify-content:center", textContent: "Use this frame as the cover", onclick: function () { it.cover = Math.round(Number(slider.value) * 10) / 10; savePlans(); toast("Cover set at " + short(it.cover)); drawPlanList(); drawPhone(); } })),
+      input("Title (YouTube, and your reference)", "text", it.title, function (v) { it.title = v || undefined; }, vname(it.v)),
+      input("Post date", "date", it.date, function (v) { it.date = v || undefined; }),
+      el("div", { className: "toggle2", onclick: function () { togglePin(i); } }, el("span", { textContent: "Pinned on Instagram and TikTok" }), sw),
+      el("div", { className: "dacts" }, el("button", { className: "btn accent", textContent: "Open in editor", onclick: function () { openInEditor(it.v); } }),
+        el("button", { className: "btn ghost dangerous", textContent: "Remove", onclick: function () { pl.items.splice(i, 1); P.sel = null; savePlans(); drawPlanner(); } }))));
+}
+function confirmTwice(btn) { if (btn.dataset.armed) return true; btn.dataset.armed = "1"; var t = btn.textContent; btn.textContent = "Click again to delete"; setTimeout(function () { delete btn.dataset.armed; btn.textContent = t; }, 2500); return false; }
+
 /* ---------------- wiring */
+$("vReview").onclick = function () { setView("review"); };
+$("vPlan").onclick = function () { (P.plans.length ? Promise.resolve() : loadPlans()).then(function () { setView("plan"); }); };
+$("platforms").querySelectorAll("button").forEach(function (b) { b.onclick = function () { P.platform = b.dataset.p; $("platforms").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); }); drawPhone(); drawSide(); }; });
+$("pAdd").onclick = function () { P.adding = !P.adding; drawAddList(); };
+$("pSelect").onchange = function () { var v = $("pSelect").value;
+  if (v === "__new") { var name = prompt("Name the new plan", "Next week"); if (name && name.trim()) { var id = slug(name), k = 2; while (P.plans.some(function (p) { return p.id === id; })) id = slug(name) + "-" + k++;
+      P.plans.push({ id: id, name: name.trim(), handles: Object.assign({}, (plan() || {}).handles || {}), items: [] }); P.planId = id; P.sel = null; savePlans(); } }
+  else { P.planId = v; P.sel = null; }
+  setView("plan"); };
 $("segEdited").onclick = function () { S.edited = true; $("segEdited").classList.add("on"); $("segAll").classList.remove("on"); drawMedia(); };
 $("segAll").onclick = function () { S.edited = false; $("segAll").classList.add("on"); $("segEdited").classList.remove("on"); drawMedia(); };
 $("q").oninput = drawMedia;
@@ -559,7 +829,8 @@ $("zIn").onclick = function () { setZoom(S.zoom + 12); }; $("zOut").onclick = fu
 $("play").innerHTML = ICON.play;
 window.addEventListener("resize", function () { fitVideo(); layout(); });
 document.addEventListener("keydown", function (e) {
-  if (e.target.closest && e.target.closest("input, textarea")) return;
+  if (e.target.closest && e.target.closest("input, textarea, select")) return;
+  if (document.querySelector(".app").classList.contains("plan")) return;
   var v = video(); if (!v) return; var k = e.key;
   if (k === " " || k === "k" || k === "K") { e.preventDefault(); togglePlay(); }
   else if (k === "n" || k === "N") { e.preventDefault(); openCompose(); }
@@ -574,7 +845,8 @@ document.addEventListener("keydown", function (e) {
   else if ((k === "z" || k === "Z") && e.shiftKey) setZoom(0);
   else if (k === "f" || k === "F") { if (v.requestFullscreen) v.requestFullscreen(); }
 });
-loadVideos().then(function () { var m = location.hash.match(/v=([^&]+)/); if (m) { var v = decodeURIComponent(m[1]); if (S.videos.some(function (x) { return x.v === v; })) select(v); } })
+loadVideos().then(function () { if (/^#planner/.test(location.hash)) return loadPlans().then(function () { setView("plan"); });
+  var m = location.hash.match(/v=([^&]+)/); if (m) { var v = decodeURIComponent(m[1]); if (S.videos.some(function (x) { return x.v === v; })) select(v); } })
   .catch(function (e) { toast("Couldn't list videos: " + e.message); });
 </script>
 </body>

@@ -373,14 +373,98 @@ export async function videoMeta(video: string): Promise<VideoMeta | null> {
 
 const hw = process.platform === "darwin" ? ["-hwaccel", "videotoolbox"] : [];
 
-/** A small still from a third of the way in (at most 1 s), for the media list. */
-export function poster(video: string): Promise<string | null> {
+/** A small still for the media list and the planner: at `at` seconds (a chosen cover), else a third of the
+ *  way in (at most 1 s). */
+export function poster(video: string, at?: number): Promise<string | null> {
   const ff = findTool("ffmpeg");
   if (!ff) return Promise.resolve(null);
-  return cached(video, "poster", "jpg", async (out) => {
-    const at = Math.min(1, ((await videoMeta(video))?.duration ?? 3) / 3);
-    await runTool(ff, ["-y", "-v", "error", "-ss", at.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", out]);
+  const t = at !== undefined && Number.isFinite(at) && at >= 0 ? Math.round(at * 10) / 10 : undefined;
+  return cached(video, t === undefined ? "poster" : `poster@${t}`, "jpg", async (out) => {
+    const dur = (await videoMeta(video))?.duration ?? 3;
+    const seek = t === undefined ? Math.min(1, dur / 3) : Math.min(t, Math.max(0, dur - 0.05));
+    await runTool(ff, ["-y", "-v", "error", "-ss", seek.toFixed(2), "-i", video, "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "4", out]);
   });
+}
+
+// ---------------------------------------------------------------- the planner
+// Plans: which videos go out, in what order, pinned or not, with which cover. One file per review folder.
+
+export type PlanItem = { v: string; pinned?: boolean; date?: string; cover?: number; title?: string };
+export type Plan = { id: string; name: string; handles: { instagram?: string; tiktok?: string; youtube?: string }; items: PlanItem[] };
+
+export const plansFile = (root: string) => path.join(root, ".review-planner.json");
+
+export function readPlans(root: string): Plan[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(plansFile(root), "utf8"));
+    return Array.isArray(raw?.plans) ? (raw.plans as Plan[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+const str = (x: unknown, max: number, what: string): string | undefined => {
+  if (x === undefined || x === null || x === "") return undefined;
+  if (typeof x !== "string") throw new Error(`${what}: text`);
+  const t = x.trim();
+  if (t.length > max) throw new Error(`${what}: ${max} characters at most`);
+  return t || undefined;
+};
+
+/** Checks a whole set of plans, as the page sends it; throws naming the first problem. */
+export function validatePlans(root: string, raw: unknown): Plan[] {
+  if (!Array.isArray(raw)) throw new Error("plans: a list");
+  if (raw.length > 50) throw new Error("plans: 50 at most");
+  const base = path.resolve(root);
+  const ids = new Set<string>();
+  return raw.map((p: Record<string, unknown>, i) => {
+    const where = `plan ${i + 1}`;
+    const id = String(p?.id ?? "");
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id)) throw new Error(`${where}: id must be lower-case letters, digits and dashes`);
+    if (ids.has(id)) throw new Error(`${where}: the id "${id}" is used twice`);
+    ids.add(id);
+    const name = str(p.name, 60, `${where} name`) ?? id;
+    const h = (p.handles ?? {}) as Record<string, unknown>;
+    const handle = (x: unknown, what: string) => {
+      const t = str(x, 40, `${where} ${what} handle`);
+      return t ? (t.startsWith("@") ? t : `@${t}`) : undefined;
+    };
+    const handles = { instagram: handle(h.instagram, "Instagram"), tiktok: handle(h.tiktok, "TikTok"), youtube: handle(h.youtube, "YouTube") };
+    if (!Array.isArray(p.items)) throw new Error(`${where}: items must be a list`);
+    if (p.items.length > 200) throw new Error(`${where}: 200 videos at most`);
+    const items: PlanItem[] = p.items.map((it: Record<string, unknown>, j: number) => {
+      const w = `${where}, video ${j + 1}`;
+      const v = String(it?.v ?? "");
+      const full = path.resolve(base, v);
+      if (!v || v.includes("\0") || !full.startsWith(base + path.sep)) throw new Error(`${w}: outside the review folder`);
+      if (!v.toLowerCase().endsWith(".mp4")) throw new Error(`${w}: only .mp4 videos`);
+      const item: PlanItem = { v: path.relative(base, full).split(path.sep).join("/") };
+      if (it.pinned === true) item.pinned = true;
+      const date = str(it.date, 10, `${w} date`);
+      if (date) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error(`${w}: date as YYYY-MM-DD`);
+        item.date = date;
+      }
+      if (it.cover !== undefined && it.cover !== null) {
+        const c = Number(it.cover);
+        if (!(Number.isFinite(c) && c >= 0)) throw new Error(`${w}: cover must be a time in seconds`);
+        item.cover = Math.round(c * 10) / 10;
+      }
+      const title = str(it.title, 100, `${w} title`);
+      if (title) item.title = title;
+      return item;
+    });
+    if (items.filter((x) => x.pinned).length > 3) throw new Error(`${where}: Instagram and TikTok allow 3 pinned posts at most`);
+    return { id, name, handles, items };
+  });
+}
+
+export function savePlans(root: string, raw: unknown): Plan[] {
+  const plans = validatePlans(root, raw);
+  const file = plansFile(root);
+  fs.writeFileSync(file + ".tmp", JSON.stringify({ plans }, null, 2) + "\n");
+  fs.renameSync(file + ".tmp", file);
+  return plans;
 }
 
 export const STRIP_FRAMES = 40;
@@ -474,7 +558,8 @@ export function serveReview(opts: { root: string; port?: number; title?: string 
       if (url.pathname === "/api/meta") return send(res, 200, { meta: await videoMeta(resolveVideo(root, v)), stripFrames: STRIP_FRAMES });
       if (url.pathname === "/api/poster" || url.pathname === "/api/strip" || url.pathname === "/api/wave") {
         const video = resolveVideo(root, v);
-        const file = await (url.pathname === "/api/poster" ? poster(video) : url.pathname === "/api/strip" ? filmstrip(video) : waveform(video));
+        const at = url.searchParams.get("t");
+        const file = await (url.pathname === "/api/poster" ? poster(video, at === null ? undefined : Number(at)) : url.pathname === "/api/strip" ? filmstrip(video) : waveform(video));
         if (!file) return send(res, 404, { error: "not available" });
         res.writeHead(200, { "content-type": file.endsWith(".png") ? "image/png" : "image/jpeg", "cache-control": "private, max-age=86400" });
         return fs.createReadStream(file).pipe(res);
@@ -488,6 +573,13 @@ export function serveReview(opts: { root: string; port?: number; title?: string 
         if (!file || !fs.existsSync(file)) return send(res, 404, { error: "no frame" });
         res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" });
         return fs.createReadStream(file).pipe(res);
+      }
+      if (url.pathname === "/api/plans") {
+        if (req.method === "GET") return send(res, 200, { plans: readPlans(root) });
+        if (req.method !== "PUT") return send(res, 405, { error: "GET or PUT" });
+        if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });
+        const body = (await readBody(req, 1_000_000)) as { plans?: unknown };
+        return send(res, 200, { plans: savePlans(root, body.plans) });
       }
       if (url.pathname === "/api/notes") {
         const video = resolveVideo(root, v);
