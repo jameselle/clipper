@@ -49,6 +49,15 @@ export const outputDuration = (pieces: Piece[]) =>
   pieces.length ? round(pieces.at(-1)!.outStart + (pieces.at(-1)!.end - pieces.at(-1)!.start)) : 0;
 
 /** Words that survive the cut, re-timed onto the output clock. */
+/** Each join between pieces, with the source words said within `span` s of either side of it. */
+export function joinsOf(pieces: Piece[], words: Record<string, Word[]>, span = 0.6): Join[] {
+  return pieces.slice(1).map((p, i) => {
+    const prev = pieces[i];
+    const near = (src: string, t: number) => (words[src] ?? []).filter((w) => w.end >= t - span && w.start <= t + span).map((w) => w.w);
+    return { at: p.outStart, nearby: [...near(prev.source, prev.end), ...near(p.source, p.start)] };
+  });
+}
+
 export function outputWords(pieces: Piece[], words: Record<string, Word[]>): Word[] {
   const out: Word[] = [];
   for (const p of pieces) {
@@ -72,7 +81,12 @@ export type CaptionLine = { text: string; start: number; end: number; words?: Wo
  *  pass can mishear a word the source transcript got right ("Or get a message" for "You'll get a message").
  *  Align the two word by word; where a heard word stands one-for-one in place of a different expected word,
  *  use the expected spelling with the heard timing. Extra or missing words are left as heard: only swaps change. */
-export function reconcileWords(heard: Word[], expected: string[]): Word[] {
+/** `joins`: where two pieces meet in the output, with the source's own words either side of the join.
+ *  A short word the cut's transcript has, the expected list lacks, starting at a join, and not said
+ *  anywhere near that join in the source, is a breath or a clipped syllable heard as a word: dropped.
+ *  (The expected list can miss a piece's first or last word, so "not expected" alone isn't enough.) */
+export type Join = { at: number; nearby: string[] };
+export function reconcileWords(heard: Word[], expected: string[], joins: Join[] = []): Word[] {
   const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%']/g, "");
   const a = heard.map((w) => n(w.w));
   const b = expected.map(n);
@@ -81,6 +95,11 @@ export function reconcileWords(heard: Word[], expected: string[]): Word[] {
   for (let i = 1; i <= a.length; i++)
     for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1);
   const out = heard.map((w) => ({ ...w }));
+  const drop = new Set<number>();
+  const atJoin = (w: Word) => {
+    const k = n(w.w);
+    return k.length > 0 && k.length <= 3 && joins.some((j) => w.start >= j.at - 0.05 && w.start <= j.at + 0.4 && !j.nearby.map(n).includes(k));
+  };
   let i = a.length;
   let j = b.length;
   while (i > 0 && j > 0) {
@@ -89,10 +108,12 @@ export function reconcileWords(heard: Word[], expected: string[]): Word[] {
       if (!same) out[i - 1].w = expected[j - 1];
       i--;
       j--;
-    } else if (d[i][j] === d[i - 1][j] + 1) i--;
-    else j--;
+    } else if (d[i][j] === d[i - 1][j] + 1) {
+      if (expected.length && atJoin(heard[i - 1])) drop.add(i - 1);
+      i--;
+    } else j--;
   }
-  return out;
+  return drop.size ? out.filter((_, k) => !drop.has(k)) : out;
 }
 
 /** Group words into short caption lines: at most `maxWords`, broken at sentence ends and long gaps.

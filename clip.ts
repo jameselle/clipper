@@ -20,7 +20,7 @@ import { DEFAULT_BRAND, mergeBrand, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
 import { formatNotes, listVideos, readNotes, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
-import { buildAss, captionLines, cutawayWindows, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "./lib/timeline";
+import { buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
 /** whisper.cpp's CLI: $CLIPPER_WHISPER, else whisper-cli on the PATH (brew install whisper-cpp), else a HyperFrames build. */
@@ -200,7 +200,11 @@ function renderFormat(
   const heard =
     spec.captions === false && !cutaways.length
       ? []
-      : reconcileWords(transcribe(cut, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-cap-"))), outputWords(pieces, words).map((w) => w.w));
+      : reconcileWords(
+          transcribe(cut, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-cap-"))),
+          outputWords(pieces, words).map((w) => w.w),
+          joinsOf(pieces, words),
+        );
   const lines = captionLines(heard);
   let windows: { start: number; end: number }[] = [];
   try {
@@ -217,7 +221,7 @@ function renderFormat(
       spec.captions === false ? [] : lines,
       { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight, animate: brand.captions, hook: brand.hook },
       spec.hook,
-      { seams: vertical ? windows : [] },
+      { seams: vertical ? windows.filter((_, i) => !cutaways[i].full) : [] },
     ),
   );
   const esc = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
@@ -227,12 +231,14 @@ function renderFormat(
     run("ffmpeg", ["-y", "-v", "error", "-i", cut, "-vf", subs, ...enc]);
   } else {
     // Vertical: the footage fills the top half and the face moves to the bottom half. Other shapes: full frame.
+    // A `full` cutaway fills the frame instead (a title card over a change of shot).
     const panel = vertical ? { w: dims.w, h: Math.round(dims.h / 2) } : { w: dims.w, h: dims.h };
-    const on = windows.map((w) => `between(t,${w.start},${w.end})`).join("+");
+    const split = windows.filter((_, i) => !(vertical && cutaways[i].full));
+    const on = split.map((w) => `between(t,${w.start},${w.end})`).join("+");
     const ins: string[] = ["-i", cut];
     const g: string[] = [];
     let last = "0:v";
-    if (vertical) {
+    if (vertical && split.length) {
       const centre = (spec.faceY ?? 0.5) * dims.h;
       const y0 = Math.round(Math.min(Math.max(centre - panel.h / 2, 0), dims.h - panel.h));
       g.push(`[0:v]split[base][f]`, `[f]crop=${dims.w}:${panel.h}:0:${y0}[face]`, `[base][face]overlay=0:${panel.h}:enable='${on}'[split]`);
@@ -245,14 +251,15 @@ function renderFormat(
       const image = /\.(png|jpe?g|webp)$/i.test(c.file);
       if (image) ins.push("-loop", "1", "-framerate", "30", "-t", String(d), "-i", c.file);
       else ins.push("-i", c.file);
-      const cover = `scale=${panel.w}:${panel.h}:force_original_aspect_ratio=increase,crop=${panel.w}:${panel.h}`;
-      const fit = image && c.pan ? `${panCrop(c.pan, panel, d)},scale=${panel.w}:${panel.h}:flags=lanczos` : cover;
+      const box = vertical && c.full ? { w: dims.w, h: dims.h } : panel;
+      const cover = `scale=${box.w}:${box.h}:force_original_aspect_ratio=increase,crop=${box.w}:${box.h}`;
+      const fit = image && c.pan ? `${panCrop(c.pan, box, d)},scale=${box.w}:${box.h}:flags=lanczos` : cover;
       const shot = image ? fit : `trim=duration=${d},setpts=PTS-STARTPTS,fps=30,${fit},tpad=stop_mode=clone:stop_duration=${d}`;
       g.push(`[${i + 1}:v]${shot},setsar=1,format=yuv420p,setpts=PTS-STARTPTS+${start}/TB[c${i}]`);
       g.push(`[${last}][c${i}]overlay=0:0:enable='between(t,${start},${end})'[o${i}]`);
       last = `o${i}`;
     });
-    if (vertical) {
+    if (vertical && split.length) {
       g.push(`[${last}]drawbox=x=0:y=${panel.h - 3}:w=iw:h=6:color=0x0b0c0e:t=fill:enable='${on}'[seam]`);
       last = "seam";
     }

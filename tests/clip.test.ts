@@ -7,7 +7,7 @@ import { test } from "node:test";
 
 import { mergeBrand } from "../lib/brand";
 import { validateSpec, type EditSpec } from "../lib/spec";
-import { assColour, buildAss, captionLines, cutawayWindows, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
+import { assColour, buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
 
 const spec = (over: Partial<EditSpec> = {}): EditSpec => ({
   title: "T",
@@ -185,6 +185,34 @@ test("pan: keeps the panel's shape and eases from one region to the other", () =
   assert.match(f, /^crop=1000:889:/);
   assert.match(f, /'100\+\(300-100\)\*\(3\*pow\(min\(t\/4,1\),2\)-2\*pow\(min\(t\/4,1\),3\)\)'/);
   assert.throws(() => panCrop({ from: [0, 0, 1000], to: [0, 0, 900] }, { w: 1080, h: 960 }, 4), /same width/);
+});
+
+test("reconcile: a short extra word right at a join (a breath heard as \"It\") is dropped; real words at joins stay", () => {
+  const heard = [W("time.", 9.4, 9.8), W("It", 10.05, 10.2), W("business", 10.25, 10.6), W("worth", 10.7, 11)];
+  const expected = ["time.", "business", "worth"];
+  const join = { at: 10.0, nearby: ["real", "time.", "business", "worth"] };
+  assert.deepEqual(reconcileWords(heard, expected, [join]).map((w) => w.w), ["time.", "business", "worth"]);
+  assert.deepEqual(reconcileWords(heard, expected).map((w) => w.w), ["time.", "It", "business", "worth"], "no join given: kept");
+  assert.deepEqual(reconcileWords(heard, expected, [{ ...join, at: 5 }]).map((w) => w.w), ["time.", "It", "business", "worth"], "far from the join: kept");
+  // The expected list can miss a piece's last word ("job."); the source says it near the join, so it stays.
+  const edge = [W("the", 9.0, 9.2), W("job.", 9.95, 10.1), W("Nobody", 10.3, 10.7)];
+  assert.deepEqual(reconcileWords(edge, ["the", "Nobody"], [{ at: 10.0, nearby: ["covers", "the", "job.", "Nobody", "tells"] }]).map((w) => w.w), ["the", "job.", "Nobody"]);
+  const long = [W("time.", 9.4, 9.8), W("absolutely", 10.05, 10.5), W("business", 10.55, 10.9)];
+  assert.deepEqual(reconcileWords(long, ["time.", "business"], [join]).map((w) => w.w), ["time.", "absolutely", "business"], "only short words");
+});
+
+test("joins carry the source words either side of each cut", () => {
+  const pieces = [{ source: "a", start: 0, end: 10, outStart: 0 }, { source: "a", start: 20, end: 30, outStart: 10 }];
+  const words = { a: [W("covers", 9.0, 9.3), W("the", 9.45, 9.6), W("job.", 9.6, 10.2), W("far", 15, 15.5), W("Nobody", 20.1, 20.5), W("later", 25, 25.5)] };
+  assert.deepEqual(joinsOf(pieces, words), [{ at: 10, nearby: ["the", "job.", "Nobody"] }]);
+});
+
+test("a cutaway can fill the whole frame; full must be true or false", () => {
+  const c = { file: "/abs/card.mp4", from: "a", to: "b" };
+  assert.equal(validateSpec(spec({ cutaways: [{ ...c, full: true }] })).ok, true);
+  const r = validateSpec(spec({ cutaways: [{ ...c, full: "yes" as unknown as boolean }] }));
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("cutaways[0].full")));
 });
 
 test("reconcile: a word misheard in the cut takes the source transcript's spelling, keeping the cut's timing", () => {

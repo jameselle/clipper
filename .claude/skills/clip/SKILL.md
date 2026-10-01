@@ -100,6 +100,9 @@ moves to the bottom half (`faceY`: 0..1, where the face sits), and the captions 
 ]
 ```
 
+- **Change of shot between takes** (another framing, room or light): cover the join with a full-screen
+  cutaway, `"full": true`, e.g. a short title card running from the last word before the join to the first
+  line after it. Captions stay in their usual place, so keep the card's content above the bottom third.
 - Images: capture pages at 2x (Playwright, `deviceScaleFactor: 2`) and `pan` across them
   ([x, y, width] in image pixels, same width both ends). A video is scaled to fill the panel.
 - **Look at every capture before using it.** Pages can show connected accounts, emails or other
