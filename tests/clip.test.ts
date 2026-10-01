@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { mergeBrand } from "../lib/brand";
+import { mergeBrand, renderSpeed } from "../lib/brand";
 import { validateSpec, type EditSpec } from "../lib/spec";
 import { assColour, buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
 
@@ -103,6 +103,17 @@ test("brand: captions default to pop; anything but pop or none is refused", () =
   assert.equal(mergeBrand({}).captions, "pop");
   assert.equal(mergeBrand({ captions: "none" }).captions, "none");
   assert.throws(() => mergeBrand({ captions: "karaoke" as never }), /brand\.captions/);
+});
+
+test("brand: brand.json sets the speed videos post at; a spec's own speed wins", () => {
+  assert.equal(mergeBrand({}).speed, 1, "no brand speed: videos play at 1x");
+  const brand = mergeBrand({ speed: 1.25 });
+  assert.equal(renderSpeed(spec(), brand), 1.25, "a spec without a speed inherits brand.json's");
+  assert.equal(renderSpeed(spec({ speed: 1.5 }), brand), 1.5, "a spec that sets one keeps it");
+  assert.equal(renderSpeed(spec({ speed: 1 }), brand), 1, "an explicit 1x is not overridden by the brand");
+  assert.equal(renderSpeed(spec(), mergeBrand({})), 1);
+  assert.throws(() => mergeBrand({ speed: 4 }), /brand\.speed/);
+  assert.throws(() => mergeBrand({ speed: "fast" as never }), /brand\.speed/);
 });
 
 test("brand: defaults fill gaps, bad colours are refused", () => {

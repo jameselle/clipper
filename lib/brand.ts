@@ -15,6 +15,8 @@ export type Brand = {
   captions: "pop" | "none";
   /** "text": big outlined words that pop in (default). "box": the words on a filled highlight box. */
   hook: "text" | "box";
+  /** How fast this business's videos play when posted (0.5 to 3). A spec's own `speed` wins. */
+  speed: number;
 };
 
 export const DEFAULT_BRAND: Brand = {
@@ -26,6 +28,7 @@ export const DEFAULT_BRAND: Brand = {
   loudness: -14,
   captions: "pop",
   hook: "text",
+  speed: 1,
 };
 
 export function mergeBrand(partial: Partial<Brand> | null | undefined): Brand {
@@ -36,5 +39,11 @@ export function mergeBrand(partial: Partial<Brand> | null | undefined): Brand {
   if (!(b.loudness <= -6 && b.loudness >= -30)) throw new Error("brand.loudness: between -30 and -6 LUFS");
   if (b.captions !== "pop" && b.captions !== "none") throw new Error('brand.captions: "pop" or "none"');
   if (b.hook !== "text" && b.hook !== "box") throw new Error('brand.hook: "text" or "box"');
+  if (!(typeof b.speed === "number" && b.speed >= 0.5 && b.speed <= 3)) throw new Error("brand.speed: a number from 0.5 to 3");
   return b;
+}
+
+/** The speed a render plays at: the spec's own, else the business's, else 1x. */
+export function renderSpeed(spec: { speed?: number }, brand: Pick<Brand, "speed">): number {
+  return spec.speed ?? brand.speed;
 }

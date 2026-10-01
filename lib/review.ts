@@ -409,10 +409,8 @@ export async function applyEdits(video: string, render: (specFile: string) => Pr
       spec.cutaways = spec.cutaways.filter((_: unknown, i: number) => !plan.dropCutaways.includes(i));
     }
   }
-  if (edits.speed !== undefined) {
-    if (edits.speed === 1) delete spec.speed;
-    else spec.speed = edits.speed;
-  }
+  // Always explicit, 1x included: a spec without a speed inherits the business's default.
+  if (edits.speed !== undefined) spec.speed = edits.speed;
   const stampNow = new Date().toISOString().replace(/[:.]/g, "-");
   fs.writeFileSync(path.join(path.dirname(map.spec), `spec.before-edits-${stampNow}.json`), before);
   fs.writeFileSync(map.spec, JSON.stringify(spec, null, 2) + "\n");

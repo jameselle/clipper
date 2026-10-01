@@ -17,9 +17,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { DEFAULT_BRAND, mergeBrand, type Brand } from "./lib/brand";
+import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
-import { applyEdits, formatNotes, listVideos, readEdits, readNotes, serveReview, updateNote } from "./lib/review";
+import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
 import { buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Piece, type Word } from "./lib/timeline";
 
@@ -200,7 +200,7 @@ function renderFormat(
     cut,
   ]);
   if (!wantText) {
-    writeMap(jobDir, fmt, specFile, pieces, [], spec.speed ?? 1);
+    writeMap(jobDir, fmt, specFile, pieces, [], renderSpeed(spec, brand));
     return out;
   }
 
@@ -288,7 +288,7 @@ function renderFormat(
     run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", ...enc]);
   }
   fs.rmSync(cut, { force: true });
-  writeMap(jobDir, fmt, specFile, pieces, windows, spec.speed ?? 1);
+  writeMap(jobDir, fmt, specFile, pieces, windows, renderSpeed(spec, brand));
   return out;
 }
 
@@ -325,7 +325,7 @@ function cmdRender(specFile: string | undefined) {
   const sil: Record<string, [number, number][]> = {};
   if (spec.tightenPauses) for (const [id, file] of Object.entries(spec.sources)) if (probe(file).hasAudio) sil[id] = silences(file);
   const outs = spec.formats.map((fmt) => renderFormat(spec, fmt, jobDir, words, sil, brand, specFile));
-  for (const o of outs) speedUp(o, spec.speed ?? 1);
+  for (const o of outs) speedUp(o, renderSpeed(spec, brand));
   for (const o of outs) console.log(`rendered ${o}`);
 }
 
@@ -365,9 +365,10 @@ function cmdCheck(video: string | undefined, hook?: string) {
   checks.push({ name: "contact sheet", ok: fs.existsSync(sheet), detail: sheet });
 
   // A sped-up render is heard at its natural pace: slow it back down before transcribing.
+  // The render map records the speed it was made at (a spec may inherit brand.json's); else the spec's.
   const speed = (() => {
     try {
-      return Number(JSON.parse(fs.readFileSync(path.join(path.dirname(video), "spec.json"), "utf8")).speed) || 1;
+      return readMap(video)?.speed || Number(JSON.parse(fs.readFileSync(path.join(path.dirname(video), "spec.json"), "utf8")).speed) || 1;
     } catch {
       return 1;
     }

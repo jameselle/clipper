@@ -333,6 +333,18 @@ test("applying edits rewrites the spec (backed up), renders through the host, th
   }
 });
 
+test("choosing 1x on the review page writes speed 1 into the spec, so brand.json's default speed can't override it", { skip: !hasFfmpeg && "needs ffmpeg" }, async () => {
+  const { applyEdits, setExportSpeed } = await import("../lib/review");
+  const { root, video } = realVideo();
+  const specFile = path.join(root, "spec.json");
+  fs.writeFileSync(specFile, JSON.stringify({ title: "t", sources: { a: "/src.mp4" }, segments: [{ source: "a", start: 0, end: 3 }], formats: ["vertical"], speed: 1.5 }));
+  fs.writeFileSync(path.join(root, "vertical.map.json"), JSON.stringify({ spec: specFile, speed: 1.5, pieces: [{ source: "a", start: 0, end: 3, outStart: 0 }], cutaways: [] }));
+  setExportSpeed(video, 1);
+  const r = await applyEdits(video, async () => {});
+  assert.equal(r.speed, 1);
+  assert.equal(JSON.parse(fs.readFileSync(specFile, "utf8")).speed, 1);
+});
+
 test("plans: an item can be a trial reel; a trial can't also be pinned (it never reaches the grid)", async () => {
   const { savePlans } = await import("../lib/review");
   const { root } = fixture();

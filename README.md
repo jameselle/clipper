@@ -142,11 +142,12 @@ Put a `brand.json` in the job folder, its parent folder, or the folder you run `
   "highlight": "#FFD60A",
   "loudness": -14,
   "captions": "pop",
-  "hook": "text"
+  "hook": "text",
+  "speed": 1
 }
 ```
 
-`captions` can be `pop` (word by word) or `none` (whole lines at once). `hook` can be `text` (big outlined words that pop in) or `box` (words on a filled highlight box). On Linux, point `fontsDir` at a folder that contains your font.
+`speed` is how fast every video plays when it's exported (0.5 to 3, the voice keeps its pitch): set `1.25` once here instead of in every spec. A spec's own `speed` wins. `captions` can be `pop` (word by word) or `none` (whole lines at once). `hook` can be `text` (big outlined words that pop in) or `box` (words on a filled highlight box). On Linux, point `fontsDir` at a folder that contains your font.
 
 ## Good to know
 
