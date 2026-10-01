@@ -196,7 +196,9 @@ export const assColour = (hex: string) => {
   return `&H00${m[3]}${m[2]}${m[1]}`.toUpperCase();
 };
 
-const escapeAss = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, "\\N");
+/** No em or en dashes on screen, ever (the owner's rule): an em dash becomes a comma, an en dash a hyphen. */
+export const noDashes = (t: string) => t.replace(/\s*\u2014\s*/g, ", ").replace(/\u2013/g, "-");
+const escapeAss = (t: string) => noDashes(t).replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, "\\N");
 
 /** One caption line as a run of events, one per word. Words not yet spoken are fully transparent but still
  *  laid out, so the line never shifts; spoken words are in the primary colour; the current word is in the
@@ -223,13 +225,21 @@ function popEvents(line: CaptionLine, style: CaptionStyle): string[] {
   return events;
 }
 
+/** How far from the top the hook starts. Vertical: just inside the 3:4 tile Instagram and TikTok crop a
+ *  9:16 video to on the profile grid (they hide (h - w*4/3)/2 px above it), so the hook shows there too. */
+export function hookTop(format: { w: number; h: number }, fallback: number): number {
+  const { w, h } = format;
+  if (h <= w) return Math.round(h * fallback);
+  return Math.round((h - (w * 4) / 3) / 2 + h * 0.035);
+}
+
 /** The hook's style: "box" puts dark words on a filled highlight box; "text" is big outlined words. */
 function hookStyleLine(style: CaptionStyle, format: { w: number; h: number }, hookSize: number): string {
   const { w, h } = format;
   if ((style.hook ?? "box") === "box")
-    return `Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${Math.round(h * 0.1)},1`;
+    return `Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${hookTop(format, 0.1)},1`;
   const size = Math.round(Math.min(w, h) * 0.092);
-  return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 7)},4,8,${Math.round(w * 0.06)},${Math.round(w * 0.06)},${Math.round(h * 0.09)},1`;
+  return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 7)},4,8,${Math.round(w * 0.06)},${Math.round(w * 0.06)},${hookTop(format, 0.09)},1`;
 }
 
 /** The hook's text: a box hook is plain; a text hook pops in, fades out, and colours `highlight`. */

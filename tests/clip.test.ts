@@ -215,6 +215,28 @@ test("a cutaway can fill the whole frame; full must be true or false", () => {
   if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("cutaways[0].full")));
 });
 
+test("a vertical hook sits inside the 3:4 grid crop Instagram and TikTok show on the profile", () => {
+  const style = { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A", hook: "text" as const };
+  const marginV = (ass: string) => Number(ass.split("\n").find((l) => l.startsWith("Style: Hook,"))!.split(",")[21]);
+  for (const hookKind of ["text", "box"] as const) {
+    const v = buildAss({ w: 1080, h: 1920 }, [], { ...style, hook: hookKind }, { text: "HOOK" });
+    const cropTop = (1920 - (1080 * 4) / 3) / 2; // 240 px are hidden above the grid tile
+    assert.ok(marginV(v) >= cropTop + 40, `${hookKind}: hook top ${marginV(v)} is inside the crop (> ${cropTop + 40})`);
+    assert.ok(marginV(v) <= 420, `${hookKind}: still near the top`);
+  }
+  const land = buildAss({ w: 1920, h: 1080 }, [], style, { text: "HOOK" });
+  assert.equal(marginV(land), Math.round(1080 * 0.09), "landscape keeps its margin");
+});
+
+test("no em dashes on screen: a hook with one is refused, and caption words lose theirs", () => {
+  const r = validateSpec(spec({ hook: { text: "DAY 1 — THE TOOLS" } }));
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("hook.text")));
+  const ass = buildAss({ w: 1080, h: 1920 }, captionLines([W("free—both", 0, 0.5), W("2–3", 0.5, 1)]), { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A" });
+  assert.doesNotMatch(ass, /[\u2013\u2014]/);
+});
+
+
 test("reconcile: a word misheard in the cut takes the source transcript's spelling, keeping the cut's timing", () => {
   const heard = [W("Or", 1, 1.2), W("get", 1.2, 1.4), W("a", 1.4, 1.5), W("message", 1.5, 2)];
   const out = reconcileWords(heard, ["You'll", "get", "a", "message"]);

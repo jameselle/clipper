@@ -81,6 +81,7 @@ export function validateSpec(raw: unknown): SpecResult {
   if (s.focusX !== undefined && !(s.focusX >= 0 && s.focusX <= 1)) errors.push("focusX: 0..1");
   if (s.tightenPauses !== undefined && !(s.tightenPauses >= 0)) errors.push("tightenPauses: seconds >= 0");
   if (s.hook !== undefined && (typeof s.hook.text !== "string" || !s.hook.text.trim())) errors.push("hook.text: required when hook is set");
+  else if (s.hook !== undefined && /[\u2013\u2014]/.test(s.hook.text)) errors.push("hook.text: no em or en dashes (use a comma, colon or full stop)");
   if (s.music !== undefined && (typeof s.music.file !== "string" || !s.music.file.startsWith("/"))) errors.push("music.file: absolute path");
   if (s.faceY !== undefined && !(s.faceY >= 0 && s.faceY <= 1)) errors.push("faceY: 0..1");
   if (s.speed !== undefined && !(typeof s.speed === "number" && s.speed >= 0.5 && s.speed <= 3)) errors.push("speed: a number from 0.5 to 3");
