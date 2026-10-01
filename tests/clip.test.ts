@@ -7,7 +7,7 @@ import { test } from "node:test";
 
 import { mergeBrand } from "../lib/brand";
 import { validateSpec, type EditSpec } from "../lib/spec";
-import { assColour, buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
+import { assColour, buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/timeline";
 
 const spec = (over: Partial<EditSpec> = {}): EditSpec => ({
   title: "T",
@@ -234,6 +234,49 @@ test("no em dashes on screen: a hook with one is refused, and caption words lose
   if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("hook.text")));
   const ass = buildAss({ w: 1080, h: 1920 }, captionLines([W("free—both", 0, 0.5), W("2–3", 0.5, 1)]), { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A" });
   assert.doesNotMatch(ass, /[\u2013\u2014]/);
+});
+
+
+test("a sentence's last word stays in the edit when whisper stretches it past where the pause is trimmed", () => {
+  // Real case (Day 2): "zero." 117.68-118.42, silence from 117.85: the piece ends at 118.0, before the word's midpoint.
+  const pieces = keepPieces(spec({ segments: [{ source: "a", start: 110, end: 125 }], tightenPauses: 0.5 }), {}, { a: [[117.85, 118.6]] });
+  const words = { a: [W("saw", 117.44, 117.68), W("zero.", 117.68, 118.42), W("No", 118.64, 118.69)] };
+  assert.deepEqual(outputWords(pieces, words).map((w) => w.w), ["saw", "zero.", "No"]);
+});
+
+test("a word whisper dates inside a trimmed pause was said just before it: it stays, at the end of the piece", () => {
+  // Real case (Day 2): "worked." is dated 0.2 s into the silence that the pause trim removes.
+  const pieces = keepPieces(spec({ segments: [{ source: "a", start: 0, end: 10 }], tightenPauses: 0.5 }), {}, { a: [[4.0, 6.0]] });
+  const words = { a: [W("it", 3.6, 3.8), W("worked.", 4.35, 4.9), W("Then", 6.1, 6.3)] };
+  const out = outputWords(pieces, words);
+  assert.deepEqual(out.map((w) => w.w), ["it", "worked.", "Then"]);
+  assert.ok(out[1].start <= pieces[0].end - pieces[0].start + pieces[0].outStart, "placed inside the first piece");
+  assert.ok(out[1].start >= out[0].start && out[2].start >= out[1].end, "still in order");
+});
+
+test("a cutaway never covers the hook: it waits until the hook is off screen", () => {
+  const w = clearOfHook([{ start: 1.0, end: 4.0 }, { start: 5, end: 6 }, { start: 0.5, end: 2.0 }], 2.5);
+  assert.deepEqual(w, [{ start: 2.5, end: 4.0 }, { start: 5, end: 6 }, { start: 2.5, end: 2.5 }]);
+  assert.deepEqual(clearOfHook([{ start: 1, end: 2 }], 0), [{ start: 1, end: 2 }], "no hook: unchanged");
+});
+
+test("reconcile, source mode: captions say exactly the corrected transcript, timed by what the cut heard", () => {
+  // The cut's pass heard "many chat" (two words), "forty dollars" for "$40", "laid up" for "later," and missed "zero".
+  const heard = [W("many", 0, 0.2), W("chat", 0.2, 0.5), W("costs", 0.6, 0.9), W("30", 1, 1.2), W("to", 1.2, 1.3), W("forty", 1.3, 1.6), W("dollars", 1.6, 2), W("the", 2.2, 2.3), W("app", 2.3, 2.5), W("saw", 2.5, 2.8), W("laid", 3, 3.2), W("up", 3.2, 3.4)];
+  const expected = ["ManyChat", "costs", "30", "to", "$40", "the", "app", "saw", "zero", "later,"];
+  const out = reconcileWords(heard, expected, [], "source");
+  assert.deepEqual(out.map((w) => w.w), expected);
+  for (let i = 1; i < out.length; i++) assert.ok(out[i].start >= out[i - 1].start, "times stay in order");
+  const zero = out[expected.indexOf("zero")];
+  assert.ok(zero.start >= 2.8 && zero.end <= 3.2, "a word the cut missed gets the gap where it was said");
+  assert.deepEqual(reconcileWords(heard, expected).map((w) => w.w).includes("many"), true, "default mode is unchanged");
+});
+
+test("captionText must be heard or source", () => {
+  assert.equal(validateSpec(spec({ captionText: "source" })).ok, true);
+  const r = validateSpec(spec({ captionText: "both" as unknown as "source" }));
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("captionText")));
 });
 
 

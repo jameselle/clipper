@@ -21,7 +21,7 @@ import { DEFAULT_BRAND, mergeBrand, type Brand } from "./lib/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
 import { applyEdits, formatNotes, listVideos, readEdits, readNotes, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
-import { buildAss, captionLines, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Piece, type Word } from "./lib/timeline";
+import { buildAss, captionLines, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Piece, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
 /** whisper.cpp's CLI: $CLIPPER_WHISPER, else whisper-cli on the PATH (brew install whisper-cpp), else a HyperFrames build. */
@@ -215,11 +215,21 @@ function renderFormat(
           transcribe(cut, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "clip-cap-"))),
           outputWords(pieces, words).map((w) => w.w),
           joinsOf(pieces, words),
+          spec.captionText ?? "heard",
         );
   const lines = captionLines(heard);
   let windows: { start: number; end: number }[] = [];
   try {
     windows = cutawayWindows(lines, cutaways);
+    // The hook sits in the top half for its first seconds: top-half cutaways wait for it (full-frame ones too).
+    if (spec.hook) {
+      const hookEnd = spec.hook.seconds ?? 3;
+      const moved = clearOfHook(windows, hookEnd);
+      moved.forEach((w, i) => {
+        if (w.start !== windows[i].start) console.log(`cutaway ${i + 1} waits for the hook: starts at ${w.start.toFixed(2)}s, not ${windows[i].start.toFixed(2)}s`);
+      });
+      windows = moved;
+    }
   } catch (e) {
     die(`${(e as Error).message}\n  what the cut says: ${heard.map((w) => w.w).join(" ")}`);
   }
@@ -258,7 +268,7 @@ function renderFormat(
     cutaways.forEach((c, i) => {
       if (!fs.existsSync(c.file)) die(`cutaway ${i + 1}: no such file ${c.file}`);
       const { start, end } = windows[i];
-      const d = Number((end - start).toFixed(3));
+      const d = Math.max(0.04, Number((end - start).toFixed(3))); // a window squeezed out by the hook still needs a valid input
       const image = /\.(png|jpe?g|webp)$/i.test(c.file);
       if (image) ins.push("-loop", "1", "-framerate", "30", "-t", String(d), "-i", c.file);
       else ins.push("-i", c.file);

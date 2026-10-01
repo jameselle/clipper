@@ -539,7 +539,8 @@ export function poster(video: string, at?: number): Promise<string | null> {
 // ---------------------------------------------------------------- the planner
 // Plans: which videos go out, in what order, pinned or not, with which cover. One file per review folder.
 
-export type PlanItem = { v: string; pinned?: boolean; date?: string; cover?: number; title?: string };
+/** `trial`: posted as an Instagram trial reel (shown to non-followers only; never on the profile grid unless it graduates). */
+export type PlanItem = { v: string; pinned?: boolean; trial?: boolean; date?: string; cover?: number; title?: string };
 export type Plan = { id: string; name: string; handles: { instagram?: string; tiktok?: string; youtube?: string }; items: PlanItem[] };
 
 export const plansFile = (root: string) => path.join(root, ".review-planner.json");
@@ -590,6 +591,10 @@ export function validatePlans(root: string, raw: unknown): Plan[] {
       if (!v.toLowerCase().endsWith(".mp4")) throw new Error(`${w}: only .mp4 videos`);
       const item: PlanItem = { v: path.relative(base, full).split(path.sep).join("/") };
       if (it.pinned === true) item.pinned = true;
+      if (it.trial === true) {
+        if (item.pinned) throw new Error(`${w}: a trial reel can't be pinned (it's not on the grid)`);
+        item.trial = true;
+      }
       const date = str(it.date, 10, `${w} date`);
       if (date) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error(`${w}: date as YYYY-MM-DD`);

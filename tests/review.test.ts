@@ -332,3 +332,12 @@ test("applying edits rewrites the spec (backed up), renders through the host, th
     server.close();
   }
 });
+
+test("plans: an item can be a trial reel; a trial can't also be pinned (it never reaches the grid)", async () => {
+  const { savePlans } = await import("../lib/review");
+  const { root } = fixture();
+  const base = { id: "p", name: "P", handles: {} };
+  const saved = savePlans(root, [{ ...base, items: [{ v: "a/x.mp4", trial: true }, { v: "a/y.mp4", pinned: true }, { v: "a/z.mp4", trial: false }] }]);
+  assert.deepEqual(saved[0].items, [{ v: "a/x.mp4", trial: true }, { v: "a/y.mp4", pinned: true }, { v: "a/z.mp4" }]);
+  assert.throws(() => savePlans(root, [{ ...base, items: [{ v: "a/x.mp4", trial: true, pinned: true }] }]), /trial.*pinned|pinned.*trial/);
+});

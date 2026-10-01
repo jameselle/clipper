@@ -57,6 +57,9 @@ export type EditSpec = {
   loudness?: number;
   /** Play the finished video faster (or slower): 1.5 posts at 1.5x. Voice keeps its pitch. Default 1. */
   speed?: number;
+  /** Where caption words come from. "heard" (default): what the cut itself says, spelled like the source.
+   *  "source": exactly the source transcript (use once it has been checked and corrected), timed by the cut. */
+  captionText?: "heard" | "source";
 };
 
 export type SpecResult = { ok: true; spec: EditSpec } | { ok: false; errors: string[] };
@@ -84,6 +87,7 @@ export function validateSpec(raw: unknown): SpecResult {
   else if (s.hook !== undefined && /[\u2013\u2014]/.test(s.hook.text)) errors.push("hook.text: no em or en dashes (use a comma, colon or full stop)");
   if (s.music !== undefined && (typeof s.music.file !== "string" || !s.music.file.startsWith("/"))) errors.push("music.file: absolute path");
   if (s.faceY !== undefined && !(s.faceY >= 0 && s.faceY <= 1)) errors.push("faceY: 0..1");
+  if (s.captionText !== undefined && s.captionText !== "heard" && s.captionText !== "source") errors.push('captionText: "heard" or "source"');
   if (s.speed !== undefined && !(typeof s.speed === "number" && s.speed >= 0.5 && s.speed <= 3)) errors.push("speed: a number from 0.5 to 3");
   if (s.cutaways !== undefined) {
     if (!Array.isArray(s.cutaways)) errors.push("cutaways: a list");

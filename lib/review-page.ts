@@ -229,6 +229,22 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
   .prow .pn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12.5px; }
   .prow .ps { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .prow .missing { color:var(--danger); }
+  .psec { display:flex; align-items:center; justify-content:space-between; margin:12px 12px 6px 14px; font-size:11.5px; font-weight:600; color:var(--text2); }
+  .psec span:last-child { color:var(--text3); font-weight:500; }
+  .psec .tag2 { font:600 10px var(--mono); padding:1px 6px; border-radius:5px; background:rgba(167,139,250,.14); color:#c4b5fd; }
+  .pdrop { margin:0 10px 6px; padding:10px; border:1px dashed var(--line2); border-radius:10px; color:var(--text3); font-size:11.5px; text-align:center; }
+  .pdrop.over { border-color:var(--accent); color:var(--text2); }
+  .prow.trial img { outline:2px solid rgba(167,139,250,.55); outline-offset:-2px; }
+  .icon.trialon { color:#c4b5fd; }
+  .tr-head { padding:6px 16px 12px; }
+  .tr-head b { font-size:18px; display:block; } .tr-head span { font-size:12px; color:#aaa; }
+  .tr-row { display:flex; gap:12px; align-items:center; padding:10px 14px; border-top:1px solid #1d1d1d; cursor:pointer; position:relative; }
+  .tr-row:hover { background:#0f0f0f; } .tr-row.on { background:rgba(31,209,193,.08); }
+  .tr-row img { width:54px; aspect-ratio:9/16; object-fit:cover; border-radius:6px; background:#111; }
+  .tr-row .t { font-weight:600; font-size:13px; } .tr-row .s { font-size:11.5px; color:#9a9a9a; margin-top:3px; }
+  .tr-chip { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:5px; background:#2b2440; color:#c4b5fd; margin-top:6px; }
+  .tr-row .edit { position:absolute; right:12px; top:50%; transform:translateY(-50%); height:24px; padding:0 9px; border-radius:6px; background:var(--accent); color:var(--ink); font-weight:600; font-size:11px; opacity:0; }
+  .tr-row:hover .edit, .tr-row.on .edit { opacity:1; }
   .addlist { margin:4px 10px 10px; padding:8px; border-radius:11px; background:var(--bg); border:1px dashed var(--line2); display:none; }
   .addlist.on { display:block; }
   .arow { display:flex; align-items:center; gap:9px; padding:5px 6px; border-radius:8px; }
@@ -410,10 +426,10 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
       <div style="padding:0 12px 10px"><select class="field" id="pSelect" style="width:100%"></select></div>
       <div class="addlist" id="pAddList"></div>
       <div class="scroll" id="pList"></div>
-      <div class="tip2">First at the top is posted first. The previews show the profile once every video here is up: newest first, pinned posts on top.</div>
+      <div class="tip2">First at the top is posted first. The previews show the profile once every video here is up: newest first, pinned posts on top. Trial reels are Instagram's non-follower tests: they stay off the Instagram grid unless they graduate.</div>
     </div>
     <div class="pcenter">
-      <div class="seg" id="platforms"><button class="on" data-p="instagram">Instagram</button><button data-p="tiktok">TikTok</button><button data-p="youtube">YouTube Shorts</button></div>
+      <div class="seg" id="platforms"><button class="on" data-p="instagram">Instagram</button><button data-p="tiktok">TikTok</button><button data-p="youtube">YouTube Shorts</button><button data-p="trials">Trial reels</button></div>
       <div class="phone"><div class="screen" id="screen"></div></div>
     </div>
     <div class="panel" style="border-left:1px solid var(--line)" id="pSide"></div>
@@ -739,7 +755,8 @@ var GLYPH = {
   reel: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M3 8h18M8 3l3 5M14 3l3 5M10.5 11.5v5l4.5-2.5z"/></svg>',
   grid: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
-  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  flask: '<svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/></svg>'
 };
 function plan() { return P.plans.find(function (p) { return p.id === P.planId; }) || null; }
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plan"; }
@@ -765,24 +782,41 @@ function drawPlanList() {
   P.plans.forEach(function (p) { sel.append(el("option", { value: p.id, textContent: p.name, selected: p.id === P.planId })); });
   sel.append(el("option", { value: "__new", textContent: "+ New plan…" }));
   var box = $("pList"); box.replaceChildren();
-  pl.items.forEach(function (it, i) {
-    var row = el("div", { className: "prow" + (P.sel === i ? " on" : ""), draggable: true },
-      el("span", { className: "grip", html: GLYPH.grip }), el("span", { className: "ord", textContent: String(i + 1) }), el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
-      el("div", { className: "pm" }, el("div", { className: "pn", textContent: it.title || vname(it.v) }),
-        el("div", { className: "ps" + (known(it.v) ? "" : " missing"), textContent: known(it.v) ? (it.date ? new Date(it.date + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "No date") + (it.pinned ? " · pinned" : "") : "Video not found" })),
-      el("button", { className: "icon" + (it.pinned ? " on" : ""), title: it.pinned ? "Unpin" : "Pin to the top (Instagram, TikTok)", html: GLYPH.pin, onclick: function (e) { e.stopPropagation(); togglePin(i); } }));
-    row.onclick = function () { P.sel = i; drawPlanner(); };
-    row.ondblclick = function () { openInEditor(it.v); };
-    row.ondragstart = function (e) { P.dragFrom = i; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; };
-    row.ondragend = function () { row.classList.remove("dragging"); document.querySelectorAll(".prow.over").forEach(function (r) { r.classList.remove("over"); }); };
-    row.ondragover = function (e) { e.preventDefault(); row.classList.add("over"); };
-    row.ondragleave = function () { row.classList.remove("over"); };
-    row.ondrop = function (e) { e.preventDefault(); var from = P.dragFrom; if (from == null || from === i) return; var moved = pl.items.splice(from, 1)[0]; pl.items.splice(i, 0, moved);
-      P.sel = i; P.dragFrom = null; savePlans(); drawPlanner(); };
-    box.append(row);
+  [false, true].forEach(function (trial) {
+    var idx = pl.items.map(function (_, i) { return i; }).filter(function (i) { return !!pl.items[i].trial === trial; });
+    box.append(el("div", { className: "psec" }, el("span", {}, trial ? "Trial reels " : "Grid posts", trial ? el("span", { className: "tag2", textContent: "INSTAGRAM" }) : null),
+      el("span", { textContent: idx.length ? String(idx.length) : "" })));
+    idx.forEach(function (i) { box.append(planRow(pl, i)); });
+    if (!idx.length) {
+      var dz = el("div", { className: "pdrop", textContent: trial ? "Drag a video here to post it as a trial reel (non-followers only)" : "Drag a video here to post it to the grid" });
+      dz.ondragover = function (e) { e.preventDefault(); dz.classList.add("over"); };
+      dz.ondragleave = function () { dz.classList.remove("over"); };
+      dz.ondrop = function (e) { e.preventDefault(); var from = P.dragFrom; if (from == null) return; setTrial(from, trial); P.dragFrom = null; };
+      box.append(dz);
+    }
   });
-  if (!pl.items.length) box.append(el("div", { className: "empty", style: "padding:30px 20px", textContent: "No videos in this plan yet. Use Add videos." }));
+  if (!pl.items.length) box.append(el("div", { className: "empty", style: "padding:20px", textContent: "No videos in this plan yet. Use Add videos." }));
 }
+function planRow(pl, i) {
+  var it = pl.items[i];
+  var row = el("div", { className: "prow" + (P.sel === i ? " on" : "") + (it.trial ? " trial" : ""), draggable: true },
+    el("span", { className: "grip", html: GLYPH.grip }), el("span", { className: "ord", textContent: String(i + 1) }), el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
+    el("div", { className: "pm" }, el("div", { className: "pn", textContent: it.title || vname(it.v) }),
+      el("div", { className: "ps" + (known(it.v) ? "" : " missing"), textContent: known(it.v) ? (it.date ? new Date(it.date + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "No date") + (it.pinned ? " · pinned" : "") + (it.trial ? " · trial" : "") : "Video not found" })),
+    el("button", { className: "icon" + (it.trial ? " trialon" : ""), title: it.trial ? "Move to the grid" : "Post as a trial reel (Instagram, non-followers only)", html: GLYPH.flask, onclick: function (e) { e.stopPropagation(); setTrial(i, !it.trial); } }),
+    it.trial ? null : el("button", { className: "icon" + (it.pinned ? " on" : ""), title: it.pinned ? "Unpin" : "Pin to the top (Instagram, TikTok)", html: GLYPH.pin, onclick: function (e) { e.stopPropagation(); togglePin(i); } }));
+  row.onclick = function () { P.sel = i; drawPlanner(); };
+  row.ondblclick = function () { openInEditor(it.v); };
+  row.ondragstart = function (e) { P.dragFrom = i; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; };
+  row.ondragend = function () { row.classList.remove("dragging"); document.querySelectorAll(".prow.over").forEach(function (r) { r.classList.remove("over"); }); };
+  row.ondragover = function (e) { e.preventDefault(); row.classList.add("over"); };
+  row.ondragleave = function () { row.classList.remove("over"); };
+  row.ondrop = function (e) { e.preventDefault(); var from = P.dragFrom; if (from == null || from === i) return;
+    var moved = pl.items.splice(from, 1)[0]; if (!!moved.trial !== !!it.trial) { if (it.trial) { moved.trial = true; delete moved.pinned; } else delete moved.trial; }
+    var to = pl.items.indexOf(it); pl.items.splice(to, 0, moved); P.sel = pl.items.indexOf(moved); P.dragFrom = null; savePlans(); drawPlanner(); };
+  return row;
+}
+function setTrial(i, on) { var it = plan().items[i]; if (on) { it.trial = true; if (it.pinned) { delete it.pinned; toast("Unpinned: trial reels don't appear on the grid"); } } else delete it.trial; savePlans(); drawPlanner(); }
 function drawAddList() {
   var pl = plan(), box = $("pAddList"); box.classList.toggle("on", P.adding); box.replaceChildren(); if (!P.adding) return;
   var inPlan = {}; pl.items.forEach(function (it) { inPlan[it.v] = true; });
@@ -792,9 +826,9 @@ function drawAddList() {
     el("button", { className: "icon", title: "Add to the end", html: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>', onclick: function () { pl.items.push({ v: v.v }); savePlans(); drawPlanner(); } }))); });
   if (!list.length) box.append(el("div", { className: "muted", style: "padding:8px;font-size:12px", textContent: "Every edited video is already in this plan." }));
 }
-function togglePin(i) { var pl = plan(), it = pl.items[i]; if (!it.pinned && pl.items.filter(function (x) { return x.pinned; }).length >= 3) { toast("Instagram and TikTok allow 3 pinned posts"); return; }
+function togglePin(i) { var pl = plan(), it = pl.items[i]; if (it.trial) { toast("Trial reels aren't on the grid, so they can't be pinned"); return; } if (!it.pinned && pl.items.filter(function (x) { return x.pinned; }).length >= 3) { toast("Instagram and TikTok allow 3 pinned posts"); return; }
   it.pinned = !it.pinned; if (!it.pinned) delete it.pinned; savePlans(); drawPlanner(); }
-function gridOrder(pl, pins) { var idx = pl.items.map(function (_, i) { return i; }).reverse();
+function gridOrder(pl, pins, kind) { var idx = pl.items.map(function (_, i) { return i; }).reverse().filter(function (i) { return kind !== "instagram" || !pl.items[i].trial; });
   if (!pins) return idx; return idx.filter(function (i) { return pl.items[i].pinned; }).concat(idx.filter(function (i) { return !pl.items[i].pinned; })); }
 function tileFor(pl, i, kind) {
   var it = pl.items[i], top = el("div", { className: "r" }), bottom = el("div", { className: "r" });
@@ -814,7 +848,9 @@ function drawPhone() {
   sc.className = "screen " + (kind === "tiktok" ? "tt" : kind === "youtube" ? "yt" : "ig");
   sc.append(el("div", { className: "notch" }, el("span", { textContent: "9:41" }), el("span", { className: "island" }), el("span", { textContent: "●●●" })));
   var handle = (h[kind] || "@yourhandle").replace(/^@/, ""), initial = handle.charAt(0).toUpperCase(), grid = el("div", { className: "pgrid" });
-  gridOrder(pl, kind !== "youtube").forEach(function (i) { grid.append(tileFor(pl, i, kind)); });
+  if (kind === "trials") { drawTrials(pl, sc); return; }
+  var shown = gridOrder(pl, kind !== "youtube", kind); n = shown.length;
+  shown.forEach(function (i) { grid.append(tileFor(pl, i, kind)); });
   var fill = (3 - (n % 3)) % 3 + (n < 6 ? 3 : 0); for (var k = 0; k < fill; k++) grid.append(el("div", { className: "tile ghost" }));
   if (kind === "instagram") {
     sc.append(el("div", { className: "pf-head" },
@@ -838,6 +874,17 @@ function drawPhone() {
   }
   if (!n) sc.append(el("div", { className: "pempty", textContent: "Add videos on the left to see how the profile will look." }));
 }
+function drawTrials(pl, sc) {
+  var idx = pl.items.map(function (_, i) { return i; }).filter(function (i) { return pl.items[i].trial; }).reverse();
+  sc.append(el("div", { className: "tr-head" }, el("b", { textContent: "Trial reels" }), el("span", { textContent: "Shown to people who don't follow you. Shared to your followers automatically if one performs." })));
+  idx.forEach(function (i) { var it = pl.items[i];
+    var row = el("div", { className: "tr-row" + (P.sel === i ? " on" : "") }, el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
+      el("div", {}, el("div", { className: "t", textContent: it.title || vname(it.v) }), el("div", { className: "s", textContent: it.date ? "Planned " + it.date : "Posted as a trial" }), el("span", { className: "tr-chip", textContent: "TRIAL · AUTO-SHARE IF IT PERFORMS" })),
+      el("button", { className: "edit", textContent: "Edit", onclick: function (e) { e.stopPropagation(); openInEditor(it.v); } }));
+    row.onclick = function () { P.sel = i; drawPlanner(); }; row.ondblclick = function () { openInEditor(it.v); };
+    sc.append(row); });
+  if (!idx.length) sc.append(el("div", { className: "pempty", textContent: "No trial reels in this plan. Use the flask button on a video to post it as a trial." }));
+}
 function drawSide() {
   var pl = plan(), box = $("pSide"); box.replaceChildren();
   var it = P.sel != null ? pl.items[P.sel] : null;
@@ -855,8 +902,8 @@ function drawSide() {
     return;
   }
   var i = P.sel, dv = el("video", { src: "/api/video?v=" + encodeURIComponent(it.v), muted: true, preload: "auto", playsInline: true });
-  var crop = el("div", { className: "crop" }, el("span", { textContent: P.platform === "youtube" ? "9:16" : "3:4 grid crop" }));
-  var cover = el("div", { className: "cover" }, dv, P.platform === "youtube" ? null : crop);
+  var crop = el("div", { className: "crop" }, el("span", { textContent: "3:4 grid crop" }));
+  var cover = el("div", { className: "cover" }, dv, P.platform === "youtube" || P.platform === "trials" ? null : crop);
   var slider = el("input", { type: "range", min: "0", max: "1", step: "0.1", value: String(it.cover || 0), style: "width:100%" });
   var tlabel = el("span", { className: "mono", textContent: short(it.cover || 0) });
   dv.addEventListener("loadedmetadata", function () { slider.max = String(Math.max(0.1, dv.duration - 0.05)); var start = it.cover != null ? it.cover : Math.round(Math.min(1, dv.duration / 3) * 10) / 10;
@@ -868,6 +915,7 @@ function drawSide() {
   var input = function (label, type, val, set, ph) { var x = el("input", { className: "plain", type: type, value: val || "", placeholder: ph || "" }); x.onchange = x.oninput = function () { set(x.value); savePlans(); drawPlanList(); drawPhone(); };
     return el("div", { className: "fieldrow" }, el("label", { textContent: label }), x); };
   var sw = el("div", { className: "sw" + (it.pinned ? " on" : "") });
+  var swT = el("div", { className: "sw" + (it.trial ? " on" : "") });
   box.append(el("div", { className: "phead" }, el("h2", { textContent: "#" + (i + 1) + "  " + (it.title || vname(it.v)) }), el("button", { className: "icon", title: "Close", html: GLYPH.x, onclick: function () { P.sel = null; drawPlanner(); } })),
     el("div", { className: "scroll" },
       el("div", { style: "display:flex;flex-direction:column" }, cover),
@@ -875,7 +923,8 @@ function drawSide() {
         el("button", { className: "btn", style: "justify-content:center", textContent: "Use this frame as the cover", onclick: function () { it.cover = Math.round(Number(slider.value) * 10) / 10; savePlans(); toast("Cover set at " + short(it.cover)); drawPlanList(); drawPhone(); } })),
       input("Title (YouTube, and your reference)", "text", it.title, function (v) { it.title = v || undefined; }, vname(it.v)),
       input("Post date", "date", it.date, function (v) { it.date = v || undefined; }),
-      el("div", { className: "toggle2", onclick: function () { togglePin(i); } }, el("span", { textContent: "Pinned on Instagram and TikTok" }), sw),
+      el("div", { className: "toggle2", onclick: function () { setTrial(i, !it.trial); } }, el("span", { textContent: "Trial reel on Instagram (non-followers only)" }), swT),
+      it.trial ? null : el("div", { className: "toggle2", onclick: function () { togglePin(i); } }, el("span", { textContent: "Pinned on Instagram and TikTok" }), sw),
       el("div", { className: "dacts" }, el("button", { className: "btn accent", textContent: "Open in editor", onclick: function () { openInEditor(it.v); } }),
         el("button", { className: "btn ghost dangerous", textContent: "Remove", onclick: function () { pl.items.splice(i, 1); P.sel = null; savePlans(); drawPlanner(); } }))));
 }

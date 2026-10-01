@@ -60,18 +60,25 @@ export function joinsOf(pieces: Piece[], words: Record<string, Word[]>, span = 0
 
 export function outputWords(pieces: Piece[], words: Record<string, Word[]>): Word[] {
   const out: Word[] = [];
-  for (const p of pieces) {
+  pieces.forEach((p, k) => {
+    const next = pieces[k + 1];
+    // The pause trimmed between this piece and the next one from the same source: whisper dates a sentence's
+    // last word late, sometimes inside that silence, though it was said just before it. It belongs here.
+    const gapEnd = next && next.source === p.source && next.start > p.end ? next.start : p.end;
     for (const w of words[p.source] ?? []) {
-      // whisper can stretch a word across the pause after it: judge it by its first 0.8 s
-      const mid = (w.start + Math.min(w.end, w.start + 0.8)) / 2;
-      if (mid < p.start || mid > p.end) continue;
+      // whisper stretches a sentence's last word across the pause after it, so judge a word by when it starts
+      // (cuts only happen in silence): its midpoint can land in the trimmed pause and drop a word that's heard.
+      const at = w.start + Math.min(0.1, (Math.min(w.end, w.start + 0.8) - w.start) / 2);
+      if (at < p.start || at > gapEnd || (at > p.end && at >= gapEnd)) continue;
+      const len = p.end - p.start;
+      const start = at > p.end ? Math.max(0, len - Math.min(0.3, len / 2)) : Math.max(0, w.start - p.start);
       out.push({
         w: w.w,
-        start: round(p.outStart + Math.max(0, w.start - p.start)),
-        end: round(p.outStart + Math.min(p.end, w.end) - p.start),
+        start: round(p.outStart + start),
+        end: round(p.outStart + Math.max(start + 0.05, Math.min(p.end, w.end) - p.start)),
       });
     }
-  }
+  });
   return out;
 }
 
@@ -86,7 +93,8 @@ export type CaptionLine = { text: string; start: number; end: number; words?: Wo
  *  anywhere near that join in the source, is a breath or a clipped syllable heard as a word: dropped.
  *  (The expected list can miss a piece's first or last word, so "not expected" alone isn't enough.) */
 export type Join = { at: number; nearby: string[] };
-export function reconcileWords(heard: Word[], expected: string[], joins: Join[] = []): Word[] {
+export function reconcileWords(heard: Word[], expected: string[], joins: Join[] = [], mode: "heard" | "source" = "heard"): Word[] {
+  if (mode === "source") return sourceWords(heard, expected);
   const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%']/g, "");
   const a = heard.map((w) => n(w.w));
   const b = expected.map(n);
@@ -114,6 +122,76 @@ export function reconcileWords(heard: Word[], expected: string[], joins: Join[] 
     } else j--;
   }
   return drop.size ? out.filter((_, k) => !drop.has(k)) : out;
+}
+
+/** Source mode: the captions are exactly `expected` (a checked transcript), timed by what the cut heard. A heard
+ *  word with no counterpart is folded into its neighbour's time ("many" + "chat" both time "ManyChat"); an
+ *  expected word the cut didn't hear gets the time the cut spent there, or a share of the gap around it. */
+function sourceWords(heard: Word[], expected: string[]): Word[] {
+  if (!expected.length) return [];
+  if (!heard.length) return [];
+  const n = (x: string) => x.toLowerCase().replace(/[^a-z0-9$%']/g, "");
+  const a = heard.map((w) => n(w.w));
+  const b = expected.map(n);
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1);
+  const ops: [number | null, number | null][] = [];
+  let i = a.length;
+  let j = b.length;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) ops.push([--i, --j]);
+    else if (i > 0 && (j === 0 || d[i][j] === d[i - 1][j] + 1)) ops.push([--i, null]);
+    else ops.push([null, --j]);
+  }
+  ops.reverse();
+  type Slot = { w: string; start: number | null; end: number | null };
+  const out: Slot[] = [];
+  let floating: { start: number; end: number } | null = null;
+  for (const [hi, ej] of ops) {
+    if (hi !== null && ej === null) {
+      const h = heard[hi];
+      const last = out.at(-1);
+      if (last && last.end !== null) last.end = Math.max(last.end, h.end); // an extra heard word belongs to the word before it
+      else floating = floating ? { start: floating.start, end: h.end } : { start: h.start, end: h.end };
+      continue;
+    }
+    const slot: Slot = { w: expected[ej!], start: null, end: null };
+    if (hi !== null) {
+      slot.start = heard[hi].start;
+      slot.end = heard[hi].end;
+    }
+    if (floating) {
+      if (slot.start === null) {
+        slot.start = floating.start;
+        slot.end = floating.end;
+      } else slot.start = Math.min(slot.start, floating.start);
+      floating = null;
+    }
+    out.push(slot);
+  }
+  // Words the cut didn't hear: share out the gap between their timed neighbours (or the previous word's time).
+  for (let k = 0; k < out.length; k++) {
+    if (out[k].start !== null) continue;
+    let m = k;
+    while (m < out.length && out[m].start === null) m++;
+    const prevEnd = k > 0 ? out[k - 1].end! : 0;
+    const nextStart = m < out.length ? out[m].start! : prevEnd + 0.3 * (m - k);
+    let from = prevEnd;
+    let to = nextStart;
+    if (to - from < 0.05 * (m - k) && k > 0) {
+      from = (out[k - 1].start! + out[k - 1].end!) / 2; // no gap: take the back half of the word before
+      out[k - 1].end = from;
+      to = Math.max(to, from + 0.05 * (m - k));
+    }
+    const step = (to - from) / (m - k);
+    for (let q = k; q < m; q++) {
+      out[q].start = from + step * (q - k);
+      out[q].end = from + step * (q - k + 1);
+    }
+    k = m - 1;
+  }
+  return out.map((o) => ({ w: o.w, start: o.start!, end: o.end! }));
 }
 
 /** Group words into short caption lines: at most `maxWords`, broken at sentence ends and long gaps.
@@ -145,6 +223,12 @@ export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): Caption
 export type CaptionStyle = { font: string; primary: string; outline: string; highlight: string; animate?: "pop" | "none"; hook?: "text" | "box" };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%]/g, "");
+
+/** Top-half cutaways wait for the hook to leave the screen (the hook sits in the top half too). A window that
+ *  would end before the hook does collapses to nothing (start = end) and is skipped by the renderer. */
+export function clearOfHook(windows: { start: number; end: number }[], hookEnd: number): { start: number; end: number }[] {
+  return windows.map((w) => (w.start >= hookEnd ? w : { start: hookEnd, end: Math.max(hookEnd, w.end) }));
+}
 
 /** Where each cutaway sits on the output timeline: from the start of the caption line holding its first
  *  words to the end of the line holding its last words. Searched in order; each after the one before. */
