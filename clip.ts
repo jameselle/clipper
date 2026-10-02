@@ -9,7 +9,7 @@
 //   npm run clip -- notes <video|folder> [--all]              the review notes (open ones unless --all), with frame stills
 //   npm run clip -- notes-fixed <video> <note-id> "<what changed>"  mark a note fixed after re-rendering
 //   npm run clip -- apply-edits <video>                       apply the cuts and export speed marked on the review page
-//   npm run clip -- cover <video> --day "Day 2" --title "My own ManyChat" [--at <s>]   the post's cover: a clean
+//   npm run clip -- cover <video> --day "Day 2" --title "My own ManyChat" [--at <s>] [--face 0.5]   the post's cover: a clean
 //                          source frame (the planner's cover, --at, or a third of the way in) with the day and title
 //
 // Needs FFmpeg (with libass) and whisper.cpp's whisper-cli. Nothing is ever posted anywhere.
@@ -528,7 +528,7 @@ function renderInChild(specFile: string): Promise<string> {
 /** The post's cover: the frame the owner picked in the planner (or `at`, or a third of the way in), taken from
  *  the clean source through the render map so no caption or hook is burned in, with the day and title on top,
  *  inside the profile grid's 3:4 crop. Writes <video>.cover.jpg (full size, to upload as the post's cover). */
-function cmdCover(video: string, text: { day: string; title: string }, at?: number): string {
+function cmdCover(video: string, text: { day: string; title: string }, at?: number, face?: number): string {
   const v = path.resolve(video);
   const p = probe(v);
   const root = path.resolve(process.env.CLIPPER_JOBS ?? path.join(process.cwd(), "jobs"));
@@ -547,6 +547,7 @@ function cmdCover(video: string, text: { day: string; title: string }, at?: numb
     time = hit.time;
     brand = loadBrand(path.dirname(v));
     if (typeof spec.faceY === "number") faceY = spec.faceY;
+    if (face !== undefined) faceY = face; // this frame's own face height, when the shot moved
   } else console.log("no render map beside the video: the cover frame comes from the render itself (captions included)");
   const dims = { w: p.w, h: p.h };
   const ass = v.replace(/\.mp4$/i, ".cover.ass");
@@ -645,7 +646,9 @@ switch (cmd) {
     const day = opt("--day") ?? die("cover: --day is required");
     const title = opt("--title") ?? die("cover: --title is required");
     const at = opt("--at");
-    cmdCover(v, { day, title }, at === undefined ? undefined : Number(at));
+    const face = opt("--face");
+    if (face !== undefined && !(Number(face) > 0 && Number(face) < 1)) die("cover: --face is the face centre as a fraction of the height (0 to 1)");
+    cmdCover(v, { day, title }, at === undefined ? undefined : Number(at), face === undefined ? undefined : Number(face));
     break;
   }
   case "notes-fixed": {
