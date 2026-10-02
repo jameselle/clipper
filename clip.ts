@@ -287,7 +287,9 @@ function renderFormat(
       last = "seam";
     }
     g.push(`[${last}]${subs}[vout]`);
-    run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", ...enc]);
+    // A cutaway's input is padded past its window (it holds its last frame), so cap the output at the cut's own
+    // length: a video cutaway at the very end otherwise ran the picture on, frozen and silent, past the audio.
+    run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", "-t", String(dur), ...enc]);
   }
   fs.rmSync(cut, { force: true });
   writeMap(jobDir, fmt, specFile, pieces, windows, renderSpeed(spec, brand));
@@ -343,6 +345,12 @@ function cmdCheck(video: string | undefined, hook?: string) {
   checks.push({ name: "format", ok: Boolean(shape), detail: `${p.w}x${p.h}${shape ? ` (${shape})` : " — not a known format"}` });
   checks.push({ name: "duration", ok: p.duration >= 3 && p.duration <= 600, detail: `${p.duration.toFixed(2)} s` });
   checks.push({ name: "audio", ok: p.hasAudio, detail: p.hasAudio ? "present" : "missing" });
+  // The picture must not outlast the sound (a frozen, silent tail reads as a broken video).
+  const streams = run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0", video], { quiet: true }).stdout;
+  const vDur = Number(/video,([\d.]+)/.exec(streams)?.[1]);
+  const aDur = Number(/audio,([\d.]+)/.exec(streams)?.[1]);
+  if (Number.isFinite(vDur) && Number.isFinite(aDur))
+    checks.push({ name: "picture ends with the sound", ok: vDur - aDur <= 0.3, detail: `video ${vDur.toFixed(2)} s, audio ${aDur.toFixed(2)} s` });
   // A rotation tag on a render means players turn it again: upright frames come out sideways.
   const rot = run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream_side_data=rotation", "-of", "csv=p=0", video], { quiet: true }).stdout.trim();
   const turned = rot !== "" && Number(rot) % 360 !== 0;
