@@ -96,6 +96,14 @@ npm run clip -- cover jobs/<job>/<clip>-vertical.mp4 --day "Day 2" --title "My o
 
 Writes `<clip>-vertical.cover.jpg`: the frame you picked as the cover in the planner (or `--at <seconds>`, or a third of the way in), taken from your original footage so no caption is burned in, with the day in your highlight colour and the title under it. The words stay inside the grid's 3:4 crop and above your face (from `faceY` in the spec), shrinking if they have to. Upload it as the post's cover. Titles with an em or en dash are refused.
 
+For a series look, add a `cover` block to `brand.json`:
+
+```json
+{ "cover": { "style": "series", "header": "$5K in 30 days", "sub": "Building in public", "headerHighlight": "$5K" } }
+```
+
+You get a header line with rules either side, a huge "DAY 3" with the number in your highlight colour over a brush stroke, your face on a soft blurred backdrop, and the title in two boxes at the bottom. All of it inside the 3:4 grid crop.
+
 ## Use it by hand
 
 Every clip is described by a `spec.json`:

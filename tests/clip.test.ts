@@ -7,7 +7,7 @@ import { test } from "node:test";
 
 import { mergeBrand, renderSpeed } from "../lib/brand";
 import { validateSpec, type EditSpec } from "../lib/spec";
-import { assColour, buildAss, buildCoverAss, captionLines, clearOfHook, coverLines, cutawayWindows, gridCrop, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Word } from "../lib/timeline";
+import { assColour, buildAss, buildCoverAss, captionLines, clearOfHook, coverLines, cutawayWindows, gridCrop, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Word, buildSeriesCoverAss } from "../lib/timeline";
 
 const spec = (over: Partial<EditSpec> = {}): EditSpec => ({
   title: "T",
@@ -148,6 +148,29 @@ test("cover: a moment on the render maps back to the source it came from, throug
   assert.deepEqual(sourceAt(pieces, 1.25, 4), { source: "a", time: 5.4 }, "4 s at 1.25x is 5 s into the edit");
   assert.deepEqual(sourceAt(pieces, 1, 12.5), { source: "a", time: 52.5 }, "after the cut, in the second piece");
   assert.equal(sourceAt(pieces, 1, 25), null, "past the end");
+});
+
+test("series cover: header, a huge day number and the title in two boxes, all inside the 3:4 grid crop", () => {
+  const style = { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A" };
+  const ass = buildSeriesCoverAss({ w: 1080, h: 1920 }, style, { day: "Day 3", title: "I don't edit my videos", header: "$5K in 30 days", sub: "Building in public", headerHighlight: "$5K" });
+  const events = ass.split("\n").filter((l) => l.startsWith("Dialogue:"));
+  assert.ok(events.some((e) => /DAY \{[^}]*\}3/.test(e)), "the day number is its own colour");
+  assert.ok(events.some((e) => /\$5K/.test(e) && /IN 30 DAYS/.test(e)), "the header");
+  assert.equal(events.filter((e) => /,TitleTop,|,TitleBottom,/.test(e)).length, 2, "the title in two boxes");
+  for (const e of events) {
+    const m = /\\pos\((\d+),(\d+)\)/.exec(e);
+    if (!m) continue;
+    const y = Number(m[2]);
+    assert.ok(y >= 240 && y <= 1680, `inside the grid crop: ${e.slice(0, 120)}`);
+  }
+  assert.throws(() => buildSeriesCoverAss({ w: 1080, h: 1920 }, style, { day: "Day 3", title: "Notes \u2013 not edits" }), /dash/);
+});
+
+test("brand: a cover style is simple or series, and its header text has no dashes", () => {
+  assert.equal(mergeBrand({}).cover, undefined);
+  assert.equal(mergeBrand({ cover: { style: "series", header: "$5K in 30 days" } }).cover?.style, "series");
+  assert.throws(() => mergeBrand({ cover: { style: "fancy" } as never }), /brand\.cover\.style/);
+  assert.throws(() => mergeBrand({ cover: { style: "series", header: "Day \u2014 one" } }), /dashes/);
 });
 
 test("brand: defaults fill gaps, bad colours are refused", () => {

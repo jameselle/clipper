@@ -23,7 +23,7 @@ import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "./lib/brand"
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
 import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
-import { buildAss, buildCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "./lib/timeline";
+import { buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
 /** whisper.cpp's CLI: $CLIPPER_WHISPER, else whisper-cli on the PATH (brew install whisper-cpp), else a HyperFrames build. */
@@ -550,18 +550,38 @@ function cmdCover(video: string, text: { day: string; title: string }, at?: numb
   } else console.log("no render map beside the video: the cover frame comes from the render itself (captions included)");
   const dims = { w: p.w, h: p.h };
   const ass = v.replace(/\.mp4$/i, ".cover.ass");
-  // The face's centre is the spec's faceY (else the middle): keep the words above the top of the head.
-  const above = Math.round(dims.h * (faceY - 0.13));
-  fs.writeFileSync(ass, buildCoverAss(dims, { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight }, text, { above }));
+  const colours = { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight };
+  const series = brand.cover?.style === "series" && dims.h > dims.w;
   const out = v.replace(/\.mp4$/i, ".cover.jpg");
   const esc = (x: string) => x.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
   const fit = `scale=${dims.w}:${dims.h}:force_original_aspect_ratio=increase,crop=${dims.w}:${dims.h},setsar=1`;
-  // A soft dark fade from the top of the grid tile down, so the words stand off the face behind them.
   const [top, bottom] = gridCropOf(dims);
-  const fadeH = top + Math.round((bottom - top) * 0.5); // from the frame's top edge: no seam on the full-size video
-  run("ffmpeg", ["-y", "-v", "error", "-ss", time.toFixed(3), "-i", src, "-frames:v", "1", "-filter_complex",
-    `[0:v]${fit}[base];color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='170*pow(1-Y/H,1.6)'[fade];` +
-    `[base][fade]overlay=0:0,subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`, "-q:v", "2", out]);
+  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
+  let graph: string;
+  if (series) {
+    // Series: move the face down to sit between the day number and the title boxes, darken the space that
+    // opens above it, and a light vignette for the moody look.
+    fs.writeFileSync(ass, buildSeriesCoverAss(dims, colours, { ...text, header: brand.cover?.header, sub: brand.cover?.sub, headerHighlight: brand.cover?.headerHighlight }));
+    // The photo shrinks to 82% on a blurred, darkened copy of itself, its face centred at 50% of the height.
+    const k = 0.82;
+    const pw = Math.round((dims.w * k) / 2) * 2, ph = Math.round((dims.h * k) / 2) * 2;
+    const px0 = Math.round((dims.w - pw) / 2);
+    const py0 = Math.round(dims.h * 0.52 - faceY * ph);
+    const fadeH = Math.max(top + Math.round(dims.h * 0.2), py0 + Math.round(ph * 0.12));
+    graph =
+      `[0:v]${fit},split[a][b];[a]boxblur=30:2,eq=brightness=-0.22[bg];[b]scale=${pw}:${ph},eq=brightness=-0.03:saturation=1.05,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*min(1,min(min(X,W-X)/90,min(Y,H-Y)/140))'[fg];` +
+      `[bg][fg]overlay=${px0}:${py0},vignette=PI/4.5[base];` +
+      `color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='215*pow(1-Y/H,1.3)'[fade];` +
+      `[base][fade]overlay=0:0,${subs}`;
+  } else {
+    // Simple: the face's centre is the spec's faceY (else the middle): keep the words above the top of the head.
+    const above = Math.round(dims.h * (faceY - 0.13));
+    fs.writeFileSync(ass, buildCoverAss(dims, colours, text, { above }));
+    // A soft dark fade from the top of the grid tile down, so the words stand off the face behind them.
+    const fadeH = top + Math.round((bottom - top) * 0.5); // from the frame's top edge: no seam on the full-size video
+    graph = `[0:v]${fit}[base];color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='170*pow(1-Y/H,1.6)'[fade];[base][fade]overlay=0:0,${subs}`;
+  }
+  run("ffmpeg", ["-y", "-v", "error", "-ss", time.toFixed(3), "-i", src, "-frames:v", "1", "-filter_complex", graph, "-q:v", "2", out]);
   fs.rmSync(ass, { force: true });
   console.log(`cover ${out}  (frame at ${t.toFixed(2)}s of the render${src !== v ? `, ${time.toFixed(2)}s of ${path.basename(src)}` : ""}${planned !== undefined && at === undefined ? ", the planner's pick" : ""})`);
   return out;

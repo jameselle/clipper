@@ -480,6 +480,92 @@ ${events.join("\n")}
 `;
 }
 
+/** A series cover (vertical): a header line with rules either side ("$5K IN 30 DAYS", one word in the highlight
+ *  colour) and a spaced subline, a huge "DAY n" with the number in the highlight colour over a brush stroke,
+ *  and the title in two boxes at the bottom (primary on outline, then outline on highlight). Everything sits
+ *  inside the 3:4 profile-grid crop; the photo is placed by the caller with the face between the day and the
+ *  title. Em and en dashes are refused. */
+export function buildSeriesCoverAss(
+  format: { w: number; h: number },
+  style: Pick<CaptionStyle, "font" | "primary" | "outline" | "highlight">,
+  text: { day: string; title: string; header?: string; sub?: string; headerHighlight?: string },
+): string {
+  const all = [text.day, text.title, text.header ?? "", text.sub ?? ""].join(" ");
+  if (/[\u2013\u2014]/.test(all)) throw new Error("cover text: no em or en dashes");
+  const { w, h } = format;
+  const [top, bottom] = gridCrop(format);
+  const s = w / 1080; // every size below is for a 1080-wide frame
+  const px = (n: number) => Math.round(n * s);
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")");
+  const c = (hex: string) => `\\1c${assColour(hex)}`;
+  const ev = (st: string, body: string) => `Dialogue: 0,0:00:00.00,0:00:10.00,${st},,0,0,0,,${body}`;
+  const events: string[] = [];
+  // Drawings are positioned at the top-left of the grid crop and use coordinates relative to it.
+  const draw = (colour: string, path: string) => ev("Shape", `{\\an7\\pos(0,${top})\\p1${c(colour)}\\bord0\\shad0}${path}{\\p0}`);
+  let y = top + px(30);
+  if (text.header) {
+    const size = px(66);
+    const head = esc(text.header.trim().toUpperCase());
+    const hl = text.headerHighlight ? esc(text.headerHighlight.toUpperCase()) : "";
+    const at = hl ? head.indexOf(hl) : -1;
+    const body = at >= 0 ? `${head.slice(0, at)}{${c(style.highlight)}}${hl}{${c(style.primary)}}${head.slice(at + hl.length)}` : head;
+    events.push(ev("Header", `{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}${c(style.primary)}}${body}`));
+    const half = Math.min(w * 0.42, (head.length * 0.74 * size) / 2);
+    const ruleY = y - top + Math.round(size * 0.62);
+    const x1 = px(70), x2 = Math.round(w / 2 - half - px(28)), x3 = Math.round(w / 2 + half + px(28)), x4 = w - px(70);
+    if (x2 - x1 > px(40)) {
+      events.push(draw(style.primary, `m ${x1} ${ruleY} l ${x2} ${ruleY} l ${x2} ${ruleY + px(4)} l ${x1} ${ruleY + px(4)}`));
+      events.push(draw(style.primary, `m ${x3} ${ruleY} l ${x4} ${ruleY} l ${x4} ${ruleY + px(4)} l ${x3} ${ruleY + px(4)}`));
+    }
+    y += Math.round(size * 1.18);
+  }
+  if (text.sub) {
+    const size = px(32);
+    events.push(ev("Sub", `{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}\\fsp${px(13)}${c(style.primary)}}${esc(text.sub.trim().toUpperCase())}`));
+    y += Math.round(size * 1.5);
+  }
+  // The day: "DAY" in the primary colour, the number in the highlight colour, as wide as the frame allows.
+  const m = /^(.*?)(\d+)\s*$/.exec(text.day.trim().toUpperCase());
+  const word = m ? m[1].trim() : text.day.trim().toUpperCase();
+  const num = m ? m[2] : "";
+  // Arial Black runs about 0.62 em per capital or digit at this size (a space about 0.3).
+  const daySize = Math.min(px(400), Math.floor((w * 0.9) / ((word.length + num.length) * 0.6 + 0.3)));
+  events.push(ev("Day", `{\\an8\\pos(${Math.round(w / 2)},${y - Math.round(daySize * 0.12)})\\fs${daySize}\\fscy118${c(style.primary)}}${esc(word)}${num ? ` {${c(style.highlight)}}${num}` : ""}`));
+  const brushY = y - top + Math.round(daySize * 1.02);
+  events.push(draw(style.highlight, `m ${px(110)} ${brushY + px(14)} l ${w - px(120)} ${brushY - px(10)} l ${w - px(104)} ${brushY + px(12)} l ${px(126)} ${brushY + px(38)}`));
+  // The title: two boxes at the bottom of the grid crop (one if the title is one line).
+  const lines = coverLines(text.title);
+  const fit = (t: string, max: number) => Math.min(max, Math.floor((w * 0.8) / (t.length * 0.68)));
+  const lowSize = fit(lines.at(-1)!, px(190));
+  const lowY = bottom - px(40) - Math.round(lowSize * 1.2);
+  if (lines.length === 2) {
+    const upSize = fit(lines[0], px(140));
+    events.push(ev("TitleTop", `{\\an8\\pos(${Math.round(w / 2)},${lowY - Math.round(upSize * 1.32)})\\fs${upSize}}${esc(lines[0])}`));
+  }
+  events.push(ev("TitleBottom", `{\\an8\\pos(${Math.round(w / 2)},${lowY})\\fs${lowSize}}${esc(lines.at(-1)!)}`));
+  const pad = px(18);
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${w}
+PlayResY: ${h}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Header,${style.font},${px(66)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${px(4)},${px(3)},8,0,0,0,1
+Style: Sub,Arial,${px(32)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${px(2)},${px(2)},8,0,0,0,1
+Style: Day,${style.font},${daySize},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H90000000,-1,0,0,0,100,100,-2,0,1,${px(6)},${px(8)},8,0,0,0,1
+Style: Shape,${style.font},20,${assColour(style.highlight)},${assColour(style.highlight)},${assColour(style.outline)},&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+Style: TitleTop,${style.font},${px(112)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},${assColour(style.outline)},-1,0,0,0,100,100,0,0,3,${pad},0,8,0,0,0,1
+Style: TitleBottom,${style.font},${px(140)},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${pad},0,8,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join("\n")}
+`;
+}
+
 /** The ffmpeg video filter that fits a source into the format. */
 export function reframeFilter(
   src: { w: number; h: number },

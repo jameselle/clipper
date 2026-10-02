@@ -17,6 +17,9 @@ export type Brand = {
   hook: "text" | "box";
   /** How fast this business's videos play when posted (0.5 to 3). A spec's own `speed` wins. */
   speed: number;
+  /** Post covers: "simple" (the day and title over the frame) or "series" (a header line, a huge day number,
+   *  the title in two boxes, the face moved between them). */
+  cover?: { style: "simple" | "series"; header?: string; sub?: string; headerHighlight?: string };
 };
 
 export const DEFAULT_BRAND: Brand = {
@@ -40,6 +43,14 @@ export function mergeBrand(partial: Partial<Brand> | null | undefined): Brand {
   if (b.captions !== "pop" && b.captions !== "none") throw new Error('brand.captions: "pop" or "none"');
   if (b.hook !== "text" && b.hook !== "box") throw new Error('brand.hook: "text" or "box"');
   if (!(typeof b.speed === "number" && b.speed >= 0.5 && b.speed <= 3)) throw new Error("brand.speed: a number from 0.5 to 3");
+  if (b.cover !== undefined) {
+    if (b.cover.style !== "simple" && b.cover.style !== "series") throw new Error('brand.cover.style: "simple" or "series"');
+    for (const k of ["header", "sub", "headerHighlight"] as const) {
+      const v = b.cover[k];
+      if (v !== undefined && (typeof v !== "string" || v.length > 40)) throw new Error(`brand.cover.${k}: text, 40 characters at most`);
+      if (typeof v === "string" && /[\u2013\u2014]/.test(v)) throw new Error(`brand.cover.${k}: no em or en dashes`);
+    }
+  }
   return b;
 }
 
