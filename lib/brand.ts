@@ -20,6 +20,13 @@ export type Brand = {
   /** Post covers: "simple" (the day and title over the frame) or "series" (a header line, a huge day number,
    *  the title in two boxes, the face moved between them). */
   cover?: { style: "simple" | "series"; header?: string; sub?: string; headerHighlight?: string };
+  /** "clean" (default): the voice chain (rumble cut, less boxiness, presence, softer esses, gentle compression)
+   *  before levelling. "plain": levelling only. */
+  voice?: "clean" | "plain";
+  /** Punch-ins on the face-only lines that matter (numbers, keywords). Off unless turned on. */
+  punch?: boolean;
+  /** Sound effects: a whoosh into each cutaway, an impact on full-frame cards. Off unless turned on. */
+  sfx?: boolean;
 };
 
 export const DEFAULT_BRAND: Brand = {
@@ -43,6 +50,8 @@ export function mergeBrand(partial: Partial<Brand> | null | undefined): Brand {
   if (b.captions !== "pop" && b.captions !== "none") throw new Error('brand.captions: "pop" or "none"');
   if (b.hook !== "text" && b.hook !== "box") throw new Error('brand.hook: "text" or "box"');
   if (!(typeof b.speed === "number" && b.speed >= 0.5 && b.speed <= 3)) throw new Error("brand.speed: a number from 0.5 to 3");
+  if (b.voice !== undefined && b.voice !== "clean" && b.voice !== "plain") throw new Error('brand.voice: "clean" or "plain"');
+  for (const k of ["punch", "sfx"] as const) if (b[k] !== undefined && typeof b[k] !== "boolean") throw new Error(`brand.${k}: true or false`);
   if (b.cover !== undefined) {
     if (b.cover.style !== "simple" && b.cover.style !== "series") throw new Error('brand.cover.style: "simple" or "series"');
     for (const k of ["header", "sub", "headerHighlight"] as const) {

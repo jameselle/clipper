@@ -60,6 +60,12 @@ export type EditSpec = {
   /** Where caption words come from. "heard" (default): what the cut itself says, spelled like the source.
    *  "source": exactly the source transcript (use once it has been checked and corrected), timed by the cut. */
   captionText?: "heard" | "source";
+  /** Override the voice chain for this video (see Brand.voice). */
+  voice?: "clean" | "plain";
+  /** Punch-ins on face-only lines: true/false, or a zoom for the bigger punch (1.05 to 1.4; default 1.18). */
+  punch?: boolean | { zoom?: number };
+  /** Sound effects on cutaways (see Brand.sfx). */
+  sfx?: boolean;
 };
 
 export type SpecResult = { ok: true; spec: EditSpec } | { ok: false; errors: string[] };
@@ -89,6 +95,10 @@ export function validateSpec(raw: unknown): SpecResult {
   if (s.faceY !== undefined && !(s.faceY >= 0 && s.faceY <= 1)) errors.push("faceY: 0..1");
   if (s.captionText !== undefined && s.captionText !== "heard" && s.captionText !== "source") errors.push('captionText: "heard" or "source"');
   if (s.speed !== undefined && !(typeof s.speed === "number" && s.speed >= 0.5 && s.speed <= 3)) errors.push("speed: a number from 0.5 to 3");
+  if (s.voice !== undefined && s.voice !== "clean" && s.voice !== "plain") errors.push('voice: "clean" or "plain"');
+  if (s.punch !== undefined && typeof s.punch !== "boolean" && !(typeof s.punch === "object" && (s.punch.zoom === undefined || (s.punch.zoom >= 1.05 && s.punch.zoom <= 1.4))))
+    errors.push("punch: true, false, or { zoom: 1.05 to 1.4 }");
+  if (s.sfx !== undefined && typeof s.sfx !== "boolean") errors.push("sfx: true or false");
   if (s.cutaways !== undefined) {
     if (!Array.isArray(s.cutaways)) errors.push("cutaways: a list");
     else

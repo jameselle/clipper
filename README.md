@@ -159,11 +159,21 @@ Put a `brand.json` in the job folder, its parent folder, or the folder you run `
   "loudness": -14,
   "captions": "pop",
   "hook": "text",
-  "speed": 1
+  "speed": 1,
+  "voice": "clean",
+  "punch": false,
+  "sfx": false
 }
 ```
 
 `speed` is how fast every video plays when it's exported (0.5 to 3, the voice keeps its pitch): set `1.25` once here instead of in every spec. A spec's own `speed` wins. `captions` can be `pop` (word by word) or `none` (whole lines at once). `hook` can be `text` (big outlined words that pop in) or `box` (words on a filled highlight box). On Linux, point `fontsDir` at a folder that contains your font.
+
+The finishing pass:
+- `voice`: `clean` runs the voice through a chain before levelling (rumble cut at 80 Hz, less boxiness at 500 Hz, a little presence at 3.5 kHz, softer esses, gentle 3:1 compression). `plain` only levels it.
+- `punch`: `true` adds punch-ins: a quick zoom (1.18x, then 1.12x) on lines where only your face is on screen, numbers and keywords first, never under the hook or a cutaway, at least 2 s apart. A spec can set `"punch": { "zoom": 1.25 }`.
+- `sfx`: `true` adds a whoosh into each cutaway and an impact on full-frame cards, a little under your voice. They're synthesised by FFmpeg on your machine, so there's nothing to license.
+
+`check` also reports pacing (any shot held over 3 s, three shots of the same length in a row) and caption lines over 30 characters. These are advice, never a fail.
 
 ## Good to know
 

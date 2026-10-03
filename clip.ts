@@ -23,6 +23,7 @@ import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "./lib/brand"
 import { FORMATS, validateSpec, type EditSpec, type Format } from "./lib/spec";
 import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "./lib/review";
 import { concatArgs, readTakes } from "./lib/teleprompter";
+import { SFX_SOURCE, VOICE_CHAIN, longCaptions, pacing, punchFilter, punchWindows, sfxEvents, type Punch, type Sfx } from "./lib/polish";
 import { buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "./lib/timeline";
 
 const HOME = os.homedir();
@@ -132,8 +133,19 @@ function loadBrand(jobDir: string): Brand {
 }
 
 /** Where each stretch of a render came from: lets the review page turn "delete 0:40-0:44" into source cuts. */
-function writeMap(jobDir: string, fmt: Format, specFile: string, pieces: Piece[], windows: { start: number; end: number }[], speed: number) {
-  fs.writeFileSync(path.join(jobDir, `${fmt}.map.json`), JSON.stringify({ spec: path.resolve(specFile), speed, pieces, cutaways: windows }, null, 2) + "\n");
+function writeMap(jobDir: string, fmt: Format, specFile: string, pieces: Piece[], windows: { start: number; end: number }[], speed: number, extra: { punches?: Punch[]; sfx?: Sfx[] } = {}) {
+  fs.writeFileSync(path.join(jobDir, `${fmt}.map.json`), JSON.stringify({ spec: path.resolve(specFile), speed, pieces, cutaways: windows, ...extra }, null, 2) + "\n");
+}
+
+/** Our own sound effects (synthesised, nothing to license), made once per machine. */
+function sfxFile(kind: Sfx["kind"]): string {
+  const dir = path.join(os.tmpdir(), "clipper-sfx");
+  const file = path.join(dir, `${kind}-v1.wav`);
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(dir, { recursive: true });
+    run("ffmpeg", ["-y", "-v", "error", "-filter_complex", SFX_SOURCE[kind], "-ar", "48000", "-ac", "2", file]);
+  }
+  return file;
 }
 
 function renderFormat(
@@ -178,10 +190,14 @@ function renderFormat(
   // Music ducks under the voice, then everything is levelled for social.
   const dur = outputDuration(pieces);
   let aOut = "acat";
+  if ((spec.voice ?? brand.voice ?? "clean") === "clean") {
+    f.push(`[acat]${VOICE_CHAIN}[avox]`);
+    aOut = "avox";
+  }
   if (musicIdx >= 0) {
     const vol = spec.music?.volume ?? 0.15;
     f.push(`[${musicIdx}:a]atrim=duration=${dur},volume=${vol},aresample=48000[mus]`);
-    f.push(`[acat]asplit=2[voice][key]`);
+    f.push(`[${aOut}]asplit=2[voice][key]`);
     f.push(`[mus][key]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=400[duck]`);
     f.push(`[voice][duck]amix=inputs=2:duration=first:dropout_transition=0[amix]`);
     aOut = "amix";
@@ -236,6 +252,17 @@ function renderFormat(
     die(`${(e as Error).message}\n  what the cut says: ${heard.map((w) => w.w).join(" ")}`);
   }
   const vertical = dims.h > dims.w;
+  // Punch-ins on the face-only lines that matter (never under the hook or a cutaway).
+  const punchOn = spec.punch !== undefined ? spec.punch !== false : Boolean(brand.punch);
+  const punches = punchOn
+    ? punchWindows(lines, windows.filter((w) => w.end - w.start > 0.1), {
+        hookEnd: spec.hook ? (spec.hook.seconds ?? 3) : 0,
+        duration: dur,
+        zoom: typeof spec.punch === "object" ? spec.punch.zoom : undefined,
+      })
+    : [];
+  const zoom = punchFilter(punches, dims, spec.faceY ?? 0.5);
+  if (punches.length) console.log(`punch-ins: ${punches.length} (${punches.map((p) => `${p.start.toFixed(1)}s x${p.zoom}`).join(", ")})`);
   const ass = path.join(jobDir, `${fmt}.ass`);
   fs.writeFileSync(
     ass,
@@ -250,8 +277,9 @@ function renderFormat(
   const esc = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
   const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
   const enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out];
+  let sfx: Sfx[] = [];
   if (!windows.length) {
-    run("ffmpeg", ["-y", "-v", "error", "-i", cut, "-vf", subs, ...enc]);
+    run("ffmpeg", ["-y", "-v", "error", "-i", cut, "-vf", zoom ? `${zoom},${subs}` : subs, ...enc]);
   } else {
     // Vertical: the footage fills the top half and the face moves to the bottom half. Other shapes: full frame.
     // A `full` cutaway fills the frame instead (a title card over a change of shot).
@@ -261,10 +289,14 @@ function renderFormat(
     const ins: string[] = ["-i", cut];
     const g: string[] = [];
     let last = "0:v";
+    if (zoom) {
+      g.push(`[0:v]${zoom}[zv]`);
+      last = "zv";
+    }
     if (vertical && split.length) {
       const centre = (spec.faceY ?? 0.5) * dims.h;
       const y0 = Math.round(Math.min(Math.max(centre - panel.h / 2, 0), dims.h - panel.h));
-      g.push(`[0:v]split[base][f]`, `[f]crop=${dims.w}:${panel.h}:0:${y0}[face]`, `[base][face]overlay=0:${panel.h}:enable='${on}'[split]`);
+      g.push(`[${last}]split[base][f]`, `[f]crop=${dims.w}:${panel.h}:0:${y0}[face]`, `[base][face]overlay=0:${panel.h}:enable='${on}'[split]`);
       last = "split";
     }
     cutaways.forEach((c, i) => {
@@ -287,12 +319,40 @@ function renderFormat(
       last = "seam";
     }
     g.push(`[${last}]${subs}[vout]`);
+    // Sound effects: a whoosh into each cutaway, an impact on full-frame cards, mixed under the voice.
+    let aMap = "0:a";
+    let aEnc = enc;
+    if (spec.sfx ?? brand.sfx ?? false) {
+      sfx = sfxEvents(windows.map((w, i) => ({ ...w, full: vertical && cutaways[i].full })).filter((w) => w.end - w.start > 0.1));
+      const kinds = [...new Set(sfx.map((e) => e.kind))];
+      const idx: Record<string, number> = {};
+      for (const k of kinds) {
+        idx[k] = ins.filter((a) => a === "-i").length;
+        ins.push("-i", sfxFile(k));
+      }
+      for (const k of kinds) {
+        const n = sfx.filter((e) => e.kind === k).length;
+        g.push(`[${idx[k]}:a]asplit=${n}${Array.from({ length: n }, (_, j) => `[${k}${j}]`).join("")}`);
+      }
+      const used: Record<string, number> = {};
+      sfx.forEach((e, j) => {
+        const n = (used[e.kind] = (used[e.kind] ?? -1) + 1);
+        g.push(`[${e.kind}${n}]adelay=${Math.round(e.at * 1000)}:all=1[fx${j}]`);
+      });
+      if (sfx.length) {
+        g.push(`[0:a]${sfx.map((_, j) => `[fx${j}]`).join("")}amix=inputs=${sfx.length + 1}:normalize=0:duration=first[aout]`);
+        aMap = "[aout]";
+        aEnc = enc.map((a) => (a === "copy" ? "aac" : a));
+        aEnc.splice(aEnc.indexOf("aac") + 1, 0, "-b:a", "192k");
+        console.log(`sound effects: ${sfx.length} (${sfx.map((e) => `${e.kind} ${e.at.toFixed(1)}s`).join(", ")})`);
+      }
+    }
     // A cutaway's input is padded past its window (it holds its last frame), so cap the output at the cut's own
     // length: a video cutaway at the very end otherwise ran the picture on, frozen and silent, past the audio.
-    run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", "-t", String(dur), ...enc]);
+    run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", aMap, "-t", String(dur), ...aEnc]);
   }
   fs.rmSync(cut, { force: true });
-  writeMap(jobDir, fmt, specFile, pieces, windows, renderSpeed(spec, brand));
+  writeMap(jobDir, fmt, specFile, pieces, windows, renderSpeed(spec, brand), { punches, sfx });
   return out;
 }
 
@@ -414,6 +474,35 @@ function cmdCheck(video: string | undefined, hook?: string) {
         detail: `${Math.round(score * 100)}% of ${expected.length} expected words heard in the render${missing.length ? ` (missing: ${missing.slice(0, 8).join(" ")})` : ""}`,
       });
     }
+  }
+
+  // Pacing (advisory): something new on screen at least every 3 s, no three equal-length shots in a row,
+  // caption lines short enough to read. Visual changes come from the render map: cutaways, punch-ins, the hook.
+  const map = readMap(video) as (ReturnType<typeof readMap> & { punches?: Punch[] }) | null;
+  if (map) {
+    const k = map.speed || 1;
+    let hookEnd = 0;
+    try {
+      const sp = JSON.parse(fs.readFileSync(path.join(path.dirname(video), "spec.json"), "utf8"));
+      if (sp.hook) hookEnd = (sp.hook.seconds ?? 3) / k;
+    } catch { /* no spec */ }
+    const changes = [
+      ...(map.cutaways ?? []).flatMap((w) => [w.start / k, w.end / k]),
+      ...(map.punches ?? []).flatMap((w) => [w.start / k, w.end / k]),
+      ...(hookEnd ? [hookEnd] : []),
+    ];
+    const pc = pacing(changes, p.duration);
+    const at = (ws: { start: number; end: number }[]) => ws.slice(0, 4).map((w) => `${w.start}-${w.end}s`).join(", ");
+    checks.push({ name: "pacing", ok: true, detail: pc.still.length ? `⚠ one shot held over 3 s at ${at(pc.still)} (fine if it's an animated card; on the face, add a punch-in or a cutaway)` : "something new on screen at least every 3 s" });
+    if (pc.equalRuns.length) checks.push({ name: "pacing", ok: true, detail: `⚠ three shots of equal length in a row from ${pc.equalRuns.slice(0, 4).join(", ")} s` });
+  }
+  if (shape) {
+    try {
+      const dialogue = fs.readFileSync(path.join(path.dirname(video), `${shape}.ass`), "utf8").split("\n").filter((l) => l.startsWith("Dialogue:"));
+      const texts = [...new Set(dialogue.map((l) => l.split(",").slice(9).join(",").replace(/\{[^}]*\}/g, "").replace(/\\N/g, " ").trim()))];
+      const long = longCaptions(texts.map((text) => ({ text })));
+      checks.push({ name: "caption length", ok: true, detail: long.length ? `⚠ over 30 characters: ${long.slice(0, 3).map((t) => `"${t}"`).join(", ")}` : "every line 30 characters or fewer" });
+    } catch { /* no captions file */ }
   }
 
   const ok = checks.every((c) => c.ok);
