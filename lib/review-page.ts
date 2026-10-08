@@ -318,6 +318,14 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
 
   .toast { position:fixed; left:50%; bottom:272px; transform:translateX(-50%) translateY(8px); background:#2a2a30; border:1px solid var(--line2); color:var(--text); padding:8px 14px; border-radius:10px; font-size:12.5px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; z-index:30; box-shadow:0 10px 30px -10px rgba(0,0,0,.7); }
   .toast.on { opacity:1; transform:translateX(-50%); }
+  .prow .ps.posted { color:#34d399; }
+  .tile .ov .views { display:flex; align-items:center; gap:3px; }
+  .tile .noimg { width:100%; height:100%; background:#161616; }
+  .livecard { margin:0 12px 12px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--panel2); font-size:12.5px; display:flex; flex-direction:column; gap:8px; }
+  .livecard .st { color:var(--text3); } .livecard .warn { color:#fbbf24; }
+  .livecard .pl { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .livecard a { color:var(--accent); text-decoration:none; }
+  #liveSeg { margin-bottom:8px; }
   @media (max-width:1180px) { .work { grid-template-columns:230px minmax(0,1fr) 300px; } .brand, .topright { min-width:0; } }
 </style>
 </head>
@@ -426,9 +434,10 @@ export const REVIEW_PAGE = String.raw`<!doctype html>
       <div style="padding:0 12px 10px"><select class="field" id="pSelect" style="width:100%"></select></div>
       <div class="addlist" id="pAddList"></div>
       <div class="scroll" id="pList"></div>
-      <div class="tip2">First at the top is posted first. The previews show the profile once every video here is up: newest first, pinned posts on top. Trial reels are Instagram's non-follower tests: they stay off the Instagram grid unless they graduate.</div>
+      <div class="tip2">First at the top is posted first. "Live now" shows each connected account as it is, with real views; "As planned" shows the profile once every video here is up: newest first, pinned posts on top. Trial reels are Instagram's non-follower tests: they stay off the Instagram grid unless they graduate.</div>
     </div>
     <div class="pcenter">
+      <div class="seg" id="liveSeg" style="display:none"><button class="on" id="segLive" title="The accounts as they are now, with real views">Live now</button><button id="segPlanned" title="The profiles once every video in this plan is up">As planned</button></div>
       <div class="seg" id="platforms"><button class="on" data-p="instagram">Instagram</button><button data-p="tiktok">TikTok</button><button data-p="youtube">YouTube Shorts</button><button data-p="trials">Trial reels</button></div>
       <div class="phone"><div class="screen" id="screen"></div></div>
     </div>
@@ -748,7 +757,7 @@ function applyEdits() {
 }
 
 /* ---------------- planner */
-var P = { plans: [], planId: null, platform: "instagram", sel: null, adding: false, dragFrom: null, saveT: null };
+var P = { plans: [], planId: null, platform: "instagram", sel: null, adding: false, dragFrom: null, saveT: null, live: null, liveMode: true, liveBusy: false };
 var GLYPH = {
   grip: '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>',
   pin: '<svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></svg>',
@@ -759,13 +768,81 @@ var GLYPH = {
   flask: '<svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/></svg>'
 };
 function plan() { return P.plans.find(function (p) { return p.id === P.planId; }) || null; }
+/* the live view: what is actually on the plan's accounts now, from the host (null when the plan has none) */
+var PLAT = { instagram: "IG", tiktok: "TT", youtube: "YT", x: "X", facebook: "FB", linkedin: "IN" };
+var PLATNAME = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", x: "X", facebook: "Facebook", linkedin: "LinkedIn" };
+function loadLive() { var id = P.planId; if (!id) return Promise.resolve();
+  return api("/api/live?plan=" + encodeURIComponent(id)).then(function (j) { if (P.planId !== id) return; P.live = j.feed || null; if (document.querySelector(".app").classList.contains("plan")) drawPlanner();
+    // numbers older than 6 hours: re-read the accounts once in the background (the daily refresh keeps them otherwise)
+    if (P.live && P.live.posts && P.live.posts.length && !P.autoRead && (!P.live.updatedAt || Date.now() - Date.parse(P.live.updatedAt) > 6 * 3600e3)) { P.autoRead = true; refreshLive(); } })
+    .catch(function () { P.live = null; }); }
+function refreshLive() { if (P.liveBusy) return; var id = P.planId; P.liveBusy = true; drawSide(); toast("Reading the accounts…");
+  api("/api/live?plan=" + encodeURIComponent(id), { method: "POST", body: {} }).then(function (j) { if (P.planId === id) P.live = j.feed || null; toast("Views updated from the accounts"); })
+    .catch(function (e) { toast("Couldn't read the accounts: " + e.message); }).then(function () { P.liveBusy = false; drawPlanner(); }); }
+function livePosts() { return P.live && P.live.posts && P.live.posts.length ? P.live.posts : null; }
+function isLive() { return P.liveMode && !!livePosts(); }
+function fol(k) { return isLive() && P.live.followers && P.live.followers[k] != null ? fmtN(P.live.followers[k]) : "—"; }
+function postsFor(v) { return (livePosts() || []).filter(function (p) { return p.v && p.v === v; }); }
+function planIndex(v) { var pl = plan(); if (!pl || !v) return null; for (var i = 0; i < pl.items.length; i++) if (pl.items[i].v === v) return i; return null; }
+function fmtN(n) { if (n == null) return "-"; if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M"; if (n >= 1e4) return Math.round(n / 1e3) + "K";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K"; return String(n); }
+function dayLabel(iso) { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }); }
+function localDate(iso) { return new Date(iso).toLocaleDateString("en-CA"); }
+function ago(iso) { var m = Math.round((Date.now() - Date.parse(iso)) / 60000); if (m < 2) return "just now"; if (m < 60) return m + " min ago"; var h = Math.round(m / 60); if (h < 36) return h + " h ago"; return Math.round(h / 24) + " days ago"; }
+function liveImg(p) { return p.v && known(p.v) ? el("img", { src: posterUrl({ v: p.v }), alt: "", loading: "lazy" })
+  : p.thumb ? el("img", { src: p.thumb, alt: "", loading: "lazy", referrerPolicy: "no-referrer" }) : el("div", { className: "noimg" }); }
+function openPost(p) { window.open(p.url, "_blank", "noopener"); }
+function liveTile(p, kind) {
+  var top = el("div", { className: "r" }), bottom = el("div", { className: "r" }), views = fmtN(p.views), i = planIndex(p.v);
+  if (kind === "youtube") bottom.append(el("span", { textContent: views + " views" }), el("span"));
+  else { top.append(el("span"), kind === "instagram" ? el("span", { html: GLYPH.reel }) : el("span")); bottom.append(el("span", { className: "views", html: GLYPH.play + views }), el("span")); }
+  var t = el("div", { className: "tile" + (i != null && P.sel === i ? " on" : ""), title: dayLabel(p.at) + " · " + (p.views == null ? "no view count" : p.views + " views") }, liveImg(p), el("div", { className: "ov" }, top, bottom),
+    el("div", { className: "hov" }, el("span", { className: "ordtag", textContent: dayLabel(p.at) }),
+      el("button", { className: "edit", textContent: "Open", title: "Open the post", onclick: function (e) { e.stopPropagation(); openPost(p); } })));
+  t.onclick = function () { if (i != null) { P.sel = i; drawPlanner(); } else openPost(p); };
+  return t;
+}
+function drawLiveTrials(sc) {
+  var pl = plan(), xs = (livePosts() || []).filter(function (p) { return p.platform === "instagram" && p.trial; });
+  sc.append(el("div", { className: "tr-head" }, el("b", { textContent: "Trial reels" }), el("span", { textContent: xs.length + " live now, newest first, with their views so far." })));
+  xs.forEach(function (p) { var i = planIndex(p.v), it = i != null ? pl.items[i] : null;
+    var row = el("div", { className: "tr-row" + (i != null && P.sel === i ? " on" : "") }, liveImg(p),
+      el("div", {}, el("div", { className: "t", textContent: (it && it.title) || (p.v ? vname(p.v) : "Trial reel") }), el("div", { className: "s", textContent: "Posted " + dayLabel(p.at) + " · " + (p.views == null ? "no view count" : fmtN(p.views) + " views") }), el("span", { className: "tr-chip", textContent: "TRIAL" })),
+      el("button", { className: "edit", textContent: "Open", onclick: function (e) { e.stopPropagation(); openPost(p); } }));
+    row.onclick = function () { if (i != null) { P.sel = i; drawPlanner(); } else openPost(p); };
+    sc.append(row); });
+  if (!xs.length) sc.append(el("div", { className: "pempty", textContent: "No trial reels on the account right now." }));
+}
+function liveCard(pl) {
+  if (!P.live) return null;
+  var ps = livePosts() || [], card = el("div", { className: "livecard" });
+  card.append(el("div", { className: "pl" }, el("b", { textContent: "Live from the accounts" }),
+    el("button", { className: "btn ghost", textContent: P.liveBusy ? "Reading…" : "Refresh views", disabled: P.liveBusy, onclick: refreshLive })));
+  card.append(el("div", { className: P.live.stale ? "warn" : "st", textContent: P.live.updatedAt ? "Views as of " + ago(P.live.updatedAt) + (P.live.stale ? ": refresh for today's numbers" : "") : "The accounts haven't been read yet" }));
+  if (P.live.note) card.append(el("div", { className: "st", textContent: P.live.note }));
+  ["instagram", "tiktok", "youtube", "x"].forEach(function (k) { var xs = ps.filter(function (p) { return p.platform === k; }); if (!xs.length) return;
+    var tot = xs.reduce(function (n, p) { return n + (p.views || 0); }, 0), tr = xs.filter(function (p) { return p.trial; }).length;
+    card.append(el("div", { className: "pl" }, el("span", { textContent: PLATNAME[k] + " · " + xs.length + " posts" + (tr ? " (" + tr + " trial)" : "") }), el("span", { textContent: fmtN(tot) + " views" }))); });
+  var inPlan = {}, add = []; pl.items.forEach(function (it) { inPlan[it.v] = true; });
+  ps.slice().reverse().forEach(function (p) { if (p.v && known(p.v) && !inPlan[p.v] && add.every(function (a) { return a.v !== p.v; })) add.push(p); });
+  if (add.length) card.append(el("button", { className: "btn", style: "justify-content:center", textContent: "Add " + add.length + " posted video" + (add.length > 1 ? "s" : "") + " missing from this plan",
+    onclick: function () { add.forEach(function (p) { var it = { v: p.v, date: localDate(p.at) }; if (p.platform === "instagram" && p.trial) it.trial = true; pl.items.push(it); }); savePlans(); drawPlanner(); toast("Added in the order they went up"); } }));
+  return card;
+}
+function livePostsBlock(it) {
+  var xs = postsFor(it.v); if (!xs.length) return null;
+  var box = el("div", { className: "livecard", style: "margin:0" }, el("b", { textContent: "Live" }));
+  xs.forEach(function (p) { box.append(el("div", { className: "pl" }, el("span", { textContent: PLATNAME[p.platform] + (p.trial ? " trial" : "") + " · " + dayLabel(p.at) }),
+    el("span", {}, el("b", { textContent: p.views == null ? "-" : p.views.toLocaleString() }), " views · ", el("a", { href: p.url, target: "_blank", rel: "noopener", textContent: "open" })))); });
+  return box;
+}
 function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plan"; }
 function vname(v) { return v.split("/").pop().replace(/\.mp4$/i, "").replace(/-(vertical|landscape|square)$/i, ""); }
 function posterUrl(it) { return "/api/poster?v=" + encodeURIComponent(it.v) + (it.cover != null ? "&t=" + it.cover : "") + ver(it.v); }
 function known(v) { return S.videos.some(function (x) { return x.v === v; }); }
 function loadPlans() { return api("/api/plans").then(function (j) { P.plans = j.plans;
   if (!P.plans.length) P.plans = [{ id: "plan", name: "My plan", handles: {}, items: [] }];
-  var want = (location.hash.match(/plan=([^&]+)/) || [])[1]; P.planId = (want && P.plans.some(function (p) { return p.id === want; })) ? want : P.plans[0].id; }); }
+  var want = (location.hash.match(/plan=([^&]+)/) || [])[1]; P.planId = (want && P.plans.some(function (p) { return p.id === want; })) ? want : P.plans[0].id; loadLive(); }); }
 function savePlans() { clearTimeout(P.saveT); $("savedLbl").textContent = "Saving…";
   P.saveT = setTimeout(function () { api("/api/plans", { method: "PUT", body: { plans: P.plans } }).then(function (j) { P.plans = j.plans; $("savedLbl").textContent = "Saved"; setTimeout(function () { $("savedLbl").textContent = ""; }, 1500); })
     .catch(function (e) { $("savedLbl").textContent = ""; toast("Couldn't save the plan: " + e.message); }); }, 350); }
@@ -776,7 +853,9 @@ function setView(v) { var isPlan = v === "plan"; document.querySelector(".app").
   drawExport();
   history.replaceState(null, "", isPlan ? "#planner&plan=" + encodeURIComponent(P.planId || "") : (S.cur ? "#v=" + encodeURIComponent(S.cur) : "#")); }
 function openInEditor(v) { setView("review"); select(v); }
-function drawPlanner() { var pl = plan(); if (!pl) return; drawPlanList(); drawAddList(); drawPhone(); drawSide(); $("pCount").textContent = pl.items.length ? "· " + pl.items.length : ""; }
+function drawPlanner() { var pl = plan(); if (!pl) return;
+  $("liveSeg").style.display = livePosts() ? "" : "none"; $("segLive").classList.toggle("on", P.liveMode); $("segPlanned").classList.toggle("on", !P.liveMode);
+  drawPlanList(); drawAddList(); drawPhone(); drawSide(); $("pCount").textContent = pl.items.length ? "· " + pl.items.length : ""; }
 function drawPlanList() {
   var pl = plan(), sel = $("pSelect"); sel.replaceChildren();
   P.plans.forEach(function (p) { sel.append(el("option", { value: p.id, textContent: p.name, selected: p.id === P.planId })); });
@@ -797,12 +876,15 @@ function drawPlanList() {
   });
   if (!pl.items.length) box.append(el("div", { className: "empty", style: "padding:20px", textContent: "No videos in this plan yet. Use Add videos." }));
 }
+function postedLine(it) { var xs = postsFor(it.v); if (!xs.length) return null;
+  var first = xs.reduce(function (a, b) { return Date.parse(a.at) <= Date.parse(b.at) ? a : b; });
+  return el("div", { className: "ps posted", title: "Live now, views as of the last read", textContent: "Posted " + dayLabel(first.at) + " · " + xs.map(function (p) { return PLAT[p.platform] + " " + fmtN(p.views); }).join(" · ") }); }
 function planRow(pl, i) {
   var it = pl.items[i];
   var row = el("div", { className: "prow" + (P.sel === i ? " on" : "") + (it.trial ? " trial" : ""), draggable: true },
     el("span", { className: "grip", html: GLYPH.grip }), el("span", { className: "ord", textContent: String(i + 1) }), el("img", { src: posterUrl(it), alt: "", loading: "lazy" }),
     el("div", { className: "pm" }, el("div", { className: "pn", textContent: it.title || vname(it.v) }),
-      el("div", { className: "ps" + (known(it.v) ? "" : " missing"), textContent: known(it.v) ? (it.date ? new Date(it.date + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "No date") + (it.pinned ? " · pinned" : "") + (it.trial ? " · trial" : "") : "Video not found" })),
+      postedLine(it) || el("div", { className: "ps" + (known(it.v) ? "" : " missing"), textContent: known(it.v) ? (it.date ? new Date(it.date + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "No date") + (it.pinned ? " · pinned" : "") + (it.trial ? " · trial" : "") : "Video not found" })),
     el("button", { className: "icon" + (it.trial ? " trialon" : ""), title: it.trial ? "Move to the grid" : "Post as a trial reel (Instagram, non-followers only)", html: GLYPH.flask, onclick: function (e) { e.stopPropagation(); setTrial(i, !it.trial); } }),
     it.trial ? null : el("button", { className: "icon" + (it.pinned ? " on" : ""), title: it.pinned ? "Unpin" : "Pin to the top (Instagram, TikTok)", html: GLYPH.pin, onclick: function (e) { e.stopPropagation(); togglePin(i); } }));
   row.onclick = function () { P.sel = i; drawPlanner(); };
@@ -848,31 +930,31 @@ function drawPhone() {
   sc.className = "screen " + (kind === "tiktok" ? "tt" : kind === "youtube" ? "yt" : "ig");
   sc.append(el("div", { className: "notch" }, el("span", { textContent: "9:41" }), el("span", { className: "island" }), el("span", { textContent: "●●●" })));
   var handle = (h[kind] || "@yourhandle").replace(/^@/, ""), initial = handle.charAt(0).toUpperCase(), grid = el("div", { className: "pgrid" });
-  if (kind === "trials") { drawTrials(pl, sc); return; }
-  var shown = gridOrder(pl, kind !== "youtube", kind); n = shown.length;
-  shown.forEach(function (i) { grid.append(tileFor(pl, i, kind)); });
+  if (kind === "trials") { if (isLive()) drawLiveTrials(sc); else drawTrials(pl, sc); return; }
+  if (isLive()) { var lp = livePosts().filter(function (p) { return p.platform === kind && !(kind === "instagram" && p.trial); }); n = lp.length; lp.forEach(function (p) { grid.append(liveTile(p, kind)); }); }
+  else { var shown = gridOrder(pl, kind !== "youtube", kind); n = shown.length; shown.forEach(function (i) { grid.append(tileFor(pl, i, kind)); }); }
   var fill = (3 - (n % 3)) % 3 + (n < 6 ? 3 : 0); for (var k = 0; k < fill; k++) grid.append(el("div", { className: "tile ghost" }));
   if (kind === "instagram") {
     sc.append(el("div", { className: "pf-head" },
       el("div", { style: "font-weight:700;font-size:17px;margin:2px 0 12px", textContent: handle }),
       el("div", { className: "pf-top" }, el("div", { className: "ig-ring" }, el("div", { className: "avatar", style: "width:78px;height:78px;font-size:28px", textContent: initial })),
-        el("div", { className: "stats" }, el("div", {}, el("b", { textContent: String(n) }), el("span", { textContent: "posts" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "following" })))),
+        el("div", { className: "stats" }, el("div", {}, el("b", { textContent: String(n) }), el("span", { textContent: "posts" })), el("div", {}, el("b", { textContent: fol("instagram") }), el("span", { textContent: "followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "following" })))),
       el("div", { className: "pf-name", textContent: pl.name }), el("div", { className: "bioline", style: "width:82%" }), el("div", { className: "bioline", style: "width:58%" }),
       el("div", { className: "pf-btns" }, el("div", { textContent: "Edit profile" }), el("div", { textContent: "Share profile" }))),
       el("div", { className: "pf-tabs" }, el("div", { className: "on", html: GLYPH.grid }), el("div", { html: GLYPH.reel }), el("div", { html: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>' })), grid);
   } else if (kind === "tiktok") {
     sc.append(el("div", { className: "tt-head" }, el("div", { className: "avatar", style: "width:92px;height:92px;font-size:32px", textContent: initial }),
       el("div", { style: "font-weight:700;font-size:16px", textContent: "@" + handle }),
-      el("div", { className: "tt-stats" }, el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Following" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Likes" }))),
+      el("div", { className: "tt-stats" }, el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Following" })), el("div", {}, el("b", { textContent: fol("tiktok") }), el("span", { textContent: "Followers" })), el("div", {}, el("b", { textContent: "—" }), el("span", { textContent: "Likes" }))),
       el("span", { className: "tt-btn", textContent: "Edit profile" })),
       el("div", { className: "pf-tabs" }, el("div", { className: "on", html: GLYPH.grid }), el("div", { html: GLYPH.pin })), grid);
   } else {
     sc.append(el("div", { className: "yt-banner" }), el("div", { className: "yt-chan" }, el("div", { className: "avatar", style: "width:68px;height:68px;font-size:26px", textContent: initial }),
-      el("div", {}, el("b", { textContent: pl.name }), el("span", { textContent: "@" + handle + " · — subscribers · " + n + " videos" }))),
+      el("div", {}, el("b", { textContent: pl.name }), el("span", { textContent: "@" + handle + " · " + fol("youtube") + " subscribers · " + n + " videos" }))),
       el("div", { className: "yt-sub", textContent: "Subscribe" }),
       el("div", { className: "pf-tabs" }, el("div", { textContent: "Home" }), el("div", { textContent: "Videos" }), el("div", { className: "on", textContent: "Shorts" })), el("div", { style: "height:8px" }), grid);
   }
-  if (!n) sc.append(el("div", { className: "pempty", textContent: "Add videos on the left to see how the profile will look." }));
+  if (!n) sc.append(el("div", { className: "pempty", textContent: isLive() ? "Nothing on this account yet." : "Add videos on the left to see how the profile will look." }));
 }
 function drawTrials(pl, sc) {
   var idx = pl.items.map(function (_, i) { return i; }).filter(function (i) { return pl.items[i].trial; }).reverse();
@@ -892,7 +974,7 @@ function drawSide() {
     var h = pl.handles || (pl.handles = {});
     var field = function (label, val, set, ph) { var i = el("input", { className: "plain", value: val || "", placeholder: ph || "" }); i.oninput = function () { set(i.value); savePlans(); if (label === "Plan name") { drawPlanList(); } drawPhone(); };
       return el("div", { className: "fieldrow" }, el("label", { textContent: label }), i); };
-    box.append(el("div", { className: "phead" }, el("h2", { textContent: "Profile" })),
+    box.append(liveCard(pl) || "", el("div", { className: "phead" }, el("h2", { textContent: "Profile" })),
       field("Plan name", pl.name, function (v) { pl.name = v; }),
       field("Instagram handle", h.instagram, function (v) { h.instagram = v; }, "@yourhandle"),
       field("TikTok handle", h.tiktok, function (v) { h.tiktok = v; }, "@yourhandle"),
@@ -918,6 +1000,7 @@ function drawSide() {
   var swT = el("div", { className: "sw" + (it.trial ? " on" : "") });
   box.append(el("div", { className: "phead" }, el("h2", { textContent: "#" + (i + 1) + "  " + (it.title || vname(it.v)) }), el("button", { className: "icon", title: "Close", html: GLYPH.x, onclick: function () { P.sel = null; drawPlanner(); } })),
     el("div", { className: "scroll" },
+      livePostsBlock(it) || "",
       el("div", { style: "display:flex;flex-direction:column" }, cover),
       el("div", { className: "fieldrow" }, el("label", { style: "display:flex;justify-content:space-between" }, el("span", { textContent: "Cover frame" }), tlabel), slider,
         el("button", { className: "btn", style: "justify-content:center", textContent: "Use this frame as the cover", onclick: function () { it.cover = Math.round(Number(slider.value) * 10) / 10; savePlans(); toast("Cover set at " + short(it.cover)); drawPlanList(); drawPhone(); } })),
@@ -940,11 +1023,13 @@ $("vReview").onclick = function () { setView("review"); };
 $("vPlan").onclick = function () { (P.plans.length ? Promise.resolve() : loadPlans()).then(function () { setView("plan"); }); };
 $("platforms").querySelectorAll("button").forEach(function (b) { b.onclick = function () { P.platform = b.dataset.p; $("platforms").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); }); drawPhone(); drawSide(); }; });
 $("pAdd").onclick = function () { P.adding = !P.adding; drawAddList(); };
+$("segLive").onclick = function () { P.liveMode = true; drawPlanner(); };
+$("segPlanned").onclick = function () { P.liveMode = false; drawPlanner(); };
 $("pSelect").onchange = function () { var v = $("pSelect").value;
   if (v === "__new") { var name = prompt("Name the new plan", "Next week"); if (name && name.trim()) { var id = slug(name), k = 2; while (P.plans.some(function (p) { return p.id === id; })) id = slug(name) + "-" + k++;
       P.plans.push({ id: id, name: name.trim(), handles: Object.assign({}, (plan() || {}).handles || {}), items: [] }); P.planId = id; P.sel = null; savePlans(); } }
   else { P.planId = v; P.sel = null; }
-  setView("plan"); };
+  P.live = null; loadLive(); setView("plan"); };
 $("segEdited").onclick = function () { S.edited = true; $("segEdited").classList.add("on"); $("segAll").classList.remove("on"); drawMedia(); };
 $("segAll").onclick = function () { S.edited = false; $("segAll").classList.add("on"); $("segEdited").classList.remove("on"); drawMedia(); };
 $("q").oninput = drawMedia;

@@ -696,8 +696,13 @@ type ApplyJob = { state: "running" | "done" | "failed"; startedAt: string; finis
 
 /** `render`: how this host re-renders a spec (HQ: studio render; the clipper: clip render). Without it the page
  *  can mark cuts but not apply them. */
-export function serveReview(opts: { root: string; port?: number; title?: string; render?: (specFile: string) => Promise<string | void> }): http.Server {
+/** Optional live view for the planner: what is actually on a plan's accounts now (posts with their views), and a
+ *  way to re-read it. The host decides what a plan id maps to; null means the plan has no live view. */
+export type PlannerLive = { feed: (plan: string) => unknown; refresh?: (plan: string) => Promise<unknown> };
+
+export function serveReview(opts: { root: string; port?: number; title?: string; render?: (specFile: string) => Promise<string | void>; live?: PlannerLive }): http.Server {
   const jobs = new Map<string, ApplyJob>();
+  const refreshing = new Map<string, Promise<unknown>>();
   const root = path.resolve(opts.root);
   const port = opts.port ?? 8794;
   const page = REVIEW_PAGE.split("{{TITLE}}").join((opts.title ?? "Review").replace(/[<>&"]/g, ""));
@@ -738,6 +743,20 @@ export function serveReview(opts: { root: string; port?: number; title?: string;
         if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });
         const body = (await readBody(req, 1_000_000)) as { plans?: unknown };
         return send(res, 200, { plans: savePlans(root, body.plans) });
+      }
+      if (url.pathname === "/api/live") {
+        const plan = url.searchParams.get("plan") ?? "";
+        if (!opts.live) return send(res, 200, { feed: null });
+        if (req.method === "GET") return send(res, 200, { feed: (await opts.live.feed(plan)) ?? null });
+        if (req.method !== "POST") return send(res, 405, { error: "GET or POST" });
+        if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) return send(res, 415, { error: "JSON only" });
+        if (!opts.live.refresh) return send(res, 400, { error: "this planner can't re-read the accounts" });
+        let run = refreshing.get(plan);
+        if (!run) {
+          run = opts.live.refresh(plan).finally(() => refreshing.delete(plan));
+          refreshing.set(plan, run);
+        }
+        return send(res, 200, { feed: (await run) ?? null });
       }
       if (url.pathname === "/api/cuts" || url.pathname === "/api/speed" || url.pathname === "/api/apply") {
         const video = resolveVideo(root, v);
